@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 
 import { getFirebaseAuthHeaders } from '../lib/firebase';
+import { getApiUrl } from '../lib/api';
 import { isValidCoordinate } from '../utils/reportLocations';
 
 interface LocationPickerModalProps {
@@ -181,7 +182,7 @@ export const LocationPickerModal: React.FC<LocationPickerModalProps> = ({
     setStatusMessage(null);
     try {
       const authHeaders = await getFirebaseAuthHeaders();
-      const res = await fetch(`/api/maps/reverse-geocode?lat=${lat}&lng=${lng}`, {
+      const res = await fetch(getApiUrl(`/api/maps/reverse-geocode?lat=${lat}&lng=${lng}`), {
         headers: authHeaders,
       });
       if (res.ok) {

@@ -19,6 +19,7 @@ import { CivifixLogo } from './CivifixLogo';
 import { searchCivicKnowledge } from '../data/civicKnowledge';
 import { useLanguage } from '../context/LanguageContext';
 import { getFirebaseAuthHeaders } from '../lib/firebase';
+import { getApiUrl } from '../lib/api';
 
 export type ChatLanguageCode = 'en' | 'hi' | 'te' | 'ta' | 'kn';
 
@@ -223,7 +224,7 @@ export const CivicChatbot: React.FC<CivicChatbotProps> = ({
       }));
 
       const authHeaders = await getFirebaseAuthHeaders();
-      const res = await fetch('/api/gemini/chat', {
+      const res = await fetch(getApiUrl('/api/gemini/chat'), {
         method: 'POST',
         headers: {
           ...authHeaders,

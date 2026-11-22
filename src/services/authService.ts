@@ -11,6 +11,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithCredential,
   GoogleAuthProvider,
   signOut as firebaseSignOut,
   onAuthStateChanged,
@@ -22,6 +23,8 @@ import {
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { CitizenUser } from '../types/civic';
+import { SocialLogin } from '@capgo/capacitor-social-login';
+import { Capacitor } from '@capacitor/core';
 
 const PROFILE_STORAGE_PREFIX = 'civifix_citizen_profile_';
 
@@ -337,9 +340,27 @@ export async function loginCitizen(
  * Sign in or register a citizen account using Google Sign-In (GoogleAuthProvider + signInWithPopup)
  */
 export async function loginWithGoogle(): Promise<CitizenUser> {
-  const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: 'select_account' });
-  const userCredential = await signInWithPopup(auth, provider);
+  let userCredential;
+
+  if (Capacitor.getPlatform() === 'android') {
+    await SocialLogin.initialize({
+      google: {
+        webClientId: '93301193980-kgr0veocf497aatu6dilgvhg8nc2kp11.apps.googleusercontent.com',
+        mode: 'online',
+      },
+    });
+    const { result } = await SocialLogin.login({ provider: 'google', options: {} });
+    if (result.responseType !== 'online' || !result.idToken) {
+      throw new Error('Google Sign-In did not return an ID token.');
+    }
+    const credential = GoogleAuthProvider.credential(result.idToken);
+    userCredential = await signInWithCredential(auth, credential);
+  } else {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    userCredential = await signInWithPopup(auth, provider);
+  }
+
   const remoteMeta = await loadUserProfileFromFirestore(userCredential.user.uid);
   const citizenUser = mapFirebaseUserToCitizenUser(userCredential.user, remoteMeta || undefined);
   cacheCitizenProfile(citizenUser);

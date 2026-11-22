@@ -40,6 +40,7 @@ import {
   getDepartmentForCategory,
 } from '../../types/civic';
 import { getFirebaseAuthHeaders } from '../../lib/firebase';
+import { getApiUrl } from '../../lib/api';
 import {
   submitCivicReportToFirestore,
   retryReportUpload,
@@ -1005,7 +1006,7 @@ export const ReportIssueScreen: React.FC<ReportIssueScreenProps> = ({
       });
 
       const authHeaders = await getFirebaseAuthHeaders(false);
-      let res = await fetch('/api/gemini/analyze-issue', {
+      let res = await fetch(getApiUrl('/api/gemini/analyze-issue'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: requestBody,
@@ -1015,7 +1016,7 @@ export const ReportIssueScreen: React.FC<ReportIssueScreenProps> = ({
       if (res.status === 401) {
         const refreshedHeaders = await getFirebaseAuthHeaders(true);
         if (refreshedHeaders.Authorization) {
-          res = await fetch('/api/gemini/analyze-issue', {
+          res = await fetch(getApiUrl('/api/gemini/analyze-issue'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...refreshedHeaders },
             body: requestBody,

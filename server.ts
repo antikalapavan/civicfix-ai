@@ -74,6 +74,7 @@ app.use(
 
 const HOSTED_ORIGIN_PATTERN =
   /^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:run\.app|web\.app|firebaseapp\.com|aistudio\.google\.com|googleusercontent\.com)$/i;
+const NATIVE_APP_ORIGINS = new Set(['capacitor://localhost', 'http://localhost']);
 
 /**
  * Normalizes a configured origin from APP_URL or ALLOWED_ORIGINS:
@@ -134,6 +135,10 @@ export function isOriginAllowed(
   const trimmed = origin.trim();
   if (!trimmed || trimmed === '*' || trimmed.includes('*') || trimmed.endsWith('/')) {
     return false;
+  }
+
+  if (NATIVE_APP_ORIGINS.has(trimmed.toLowerCase())) {
+    return true;
   }
 
   let parsed: URL;
