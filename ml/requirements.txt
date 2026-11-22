@@ -1,0 +1,6 @@
+# CiviFix AI - OpenCV Image Processing Microservice Dependencies
+# Phase 5: OpenCV Image Validation, Preprocessing, Quality Assessment & Telea Inpainting
+
+Flask>=3.0.0
+numpy>=1.26.0
+opencv-python-headless>=4.9.0

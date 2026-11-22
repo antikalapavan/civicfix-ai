@@ -1,0 +1,16 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+# Local IDE and build caches
+.aistudio/
+.gradle/
+**/.gradle/
+
+# Local Android build output
+android/.gradle/
+android/**/build/

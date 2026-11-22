@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+  <link href="styles.css" rel="stylesheet">
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
+<meta content="mobile_tab" name="shell-type"/>
+<title>Civifix - Live Civic Map</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<!-- Leaflet CSS for smooth full-screen interactive mapping without watermarks -->
+<link crossorigin="" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" rel="stylesheet"/>
+<link href="civifix-map.css" rel="stylesheet"/>
+<style>
+    @layer base {
+      html, body {
+        width: 100vw;
+        height: 100vh;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background-color: #f8faf6;
+      }
+      body {
+        overscroll-behavior: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .pb-safe { padding-bottom: env(safe-area-inset-bottom, 12px); }
+      .pt-safe { padding-top: env(safe-area-inset-top, 12px); }
+    }
+    ::-webkit-scrollbar { display: none; }
+
+    /* Keep provider attribution visible while using custom map controls. */
+    .leaflet-pane {
+      z-index: 1;
+    }
+    .leaflet-control-zoom {
+      display: none !important;
+    }
+    /* Pulsing user GPS beacon */
+    @keyframes pulse-ring {
+      0% { transform: scale(0.6); opacity: 0.85; }
+      100% { transform: scale(2.2); opacity: 0; }
+    }
+    .gps-pulse-beacon {
+      position: relative;
+    }
+    .gps-pulse-beacon::before {
+      content: '';
+      position: absolute;
+      top: -8px;
+      left: -8px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(0, 101, 144, 0.35);
+      animation: pulse-ring 2s cubic-bezier(0.2, 0.45, 0.5, 0.9) infinite;
+    }
+    /* Custom Pin Styles */
+    .custom-civic-pin {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .custom-civic-pin:hover, .custom-civic-pin.selected {
+      transform: scale(1.15) translateY(-4px);
+      z-index: 500 !important;
+    }
+  </style>
+
+<!-- Leaflet JS -->
+<script crossorigin="" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="civifix-map.js"></script>
+</head>
+<body class="bg-[#f8faf6] text-on-surface font-body-md text-body-md flex flex-col h-screen w-screen overflow-hidden select-none antialiased">
+<!-- Full-Screen Map Container (Absolute Underlay) -->
+<div class="absolute inset-0 w-full h-full z-0 bg-[#e7ebe7]" id="civic-map"></div>
+<!-- FLOATING TOP BAR / HEADER -->
+<header class="fixed top-0 inset-x-0 z-40 pt-safe pointer-events-none">
+<div class="px-3 pt-2 pb-1 flex flex-col gap-2">
+<!-- Top Bar Container -->
+<div class="pointer-events-auto flex items-center justify-between gap-2.5 bg-surface-container-lowest/90 backdrop-blur-md px-3.5 py-2.5 rounded-2xl shadow-lg border border-white/60">
+<div class="flex items-center gap-2.5 min-w-0">
+<img alt="Civifix" class="w-9 h-9 rounded-xl object-cover shrink-0 ring-1 ring-primary/20" src="logo1.svg"/>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse" id="gps-status-pulse"></span>
+<span class="text-[11px] font-semibold text-slate-700 tracking-tight truncate" id="gps-status-text">Finding current location...</span>
+</div>
+<button class="flex items-center gap-0.5 text-[13px] font-bold text-on-surface hover:text-primary transition-colors text-left leading-tight truncate" id="header-loc-selector">
+<span class="truncate" id="header-address-text">Waiting for GPS fix...</span>
+<span class="material-symbols-outlined text-[15px] text-slate-400 shrink-0">expand_more</span>
+</button>
+</div>
+</div>
+<!-- Right Quick Actions -->
+<div class="flex items-center gap-1 shrink-0">
+<button class="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-primary text-white text-[12px] font-bold shadow-sm hover:bg-[#004f35] active:scale-95 transition-all" id="btn-quick-new-report">
+<span class="material-symbols-outlined text-[16px]">add_location_alt</span>
+<span>Add Report</span>
+</button>
+<button aria-label="Notifications" class="relative w-8 h-8 rounded-xl flex items-center justify-center text-slate-600 hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-[19px]">notifications</span>
+<span class="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-error ring-1 ring-white"></span>
+</button>
+</div>
+</div>
+<!-- Live Search & Interactive Filter Chips Bar -->
+<div class="pointer-events-auto flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 px-0.5">
+<div class="relative shrink-0 flex items-center">
+<div class="flex items-center gap-1.5 bg-surface-container-lowest/90 backdrop-blur-md px-2.5 py-1.5 rounded-full shadow-sm border border-white/60">
+<span class="material-symbols-outlined text-primary text-[16px]">search</span>
+<input class="w-24 focus:w-36 transition-all text-xs bg-transparent border-0 p-0 text-on-surface placeholder:text-outline focus:outline-none" id="map-search-input" placeholder="Search issues..."/>
+</div>
+</div>
+<button class="filter-category-btn px-3 py-1.5 rounded-full bg-primary-container text-on-primary text-[12px] font-semibold shrink-0 shadow-sm transition-all" data-category="ALL">
+          All (<span id="total-issues-count">2</span>)
+        </button>
+<button class="filter-category-btn px-3 py-1.5 rounded-full bg-surface-container-lowest/90 backdrop-blur-md text-on-surface-variant text-[12px] font-semibold shrink-0 shadow-sm hover:bg-surface-container transition-all flex items-center gap-1" data-category="Pothole">
+<span class="material-symbols-outlined text-[14px] text-tertiary">minor_crash</span>
+          Potholes
+        </button>
+<button class="filter-category-btn px-3 py-1.5 rounded-full bg-surface-container-lowest/90 backdrop-blur-md text-on-surface-variant text-[12px] font-semibold shrink-0 shadow-sm hover:bg-surface-container transition-all flex items-center gap-1" data-category="Water Leak">
+<span class="material-symbols-outlined text-[14px] text-secondary">water_drop</span>
+          Water
+        </button>
+<button class="filter-category-btn px-3 py-1.5 rounded-full bg-surface-container-lowest/90 backdrop-blur-md text-on-surface-variant text-[12px] font-semibold shrink-0 shadow-sm hover:bg-surface-container transition-all flex items-center gap-1" data-category="Streetlight">
+<span class="material-symbols-outlined text-[14px] text-amber-600">lightbulb</span>
+          Lighting
+        </button>
+<button class="filter-category-btn px-3 py-1.5 rounded-full bg-surface-container-lowest/90 backdrop-blur-md text-on-surface-variant text-[12px] font-semibold shrink-0 shadow-sm hover:bg-surface-container transition-all flex items-center gap-1" data-category="Garbage">
+<span class="material-symbols-outlined text-[14px] text-emerald-700">delete_sweep</span>
+          Sanitation
+        </button>
+</div>
+</div>
+</header>
+<!-- FLOATING RIGHT SIDE CONTROLS -->
+<div class="fixed right-3.5 top-36 z-30 flex flex-col gap-2.5 pointer-events-auto">
+<!-- Locate Me / Live GPS -->
+<button class="w-10 h-10 rounded-2xl bg-surface-container-lowest/95 backdrop-blur-md text-secondary shadow-lg border border-white/60 flex items-center justify-center active:scale-90 transition-all hover:bg-surface-container" id="btn-locate-me" title="Locate Me (Live GPS)">
+<span class="material-symbols-outlined text-[22px]">my_location</span>
+</button>
+<!-- Tap to Pin Mode Toggle -->
+<button class="w-10 h-10 rounded-2xl bg-surface-container-lowest/95 backdrop-blur-md text-on-surface shadow-lg border border-white/60 flex items-center justify-center active:scale-90 transition-all hover:bg-surface-container" id="btn-drop-pin-mode" title="Drop Pin Mode">
+<span class="material-symbols-outlined text-[20px]">pin_drop</span>
+</button>
+<!-- Zoom Controls -->
+<div class="flex flex-col bg-surface-container-lowest/95 backdrop-blur-md rounded-2xl shadow-lg border border-white/60 overflow-hidden">
+<button aria-label="Zoom In" class="w-10 h-10 flex items-center justify-center text-on-surface hover:bg-surface-container active:scale-95 transition-transform" id="btn-zoom-in">
+<span class="material-symbols-outlined text-[20px]">add</span>
+</button>
+<div class="w-full h-px bg-surface-container"></div>
+<button aria-label="Zoom Out" class="w-10 h-10 flex items-center justify-center text-on-surface hover:bg-surface-container active:scale-95 transition-transform" id="btn-zoom-out">
+<span class="material-symbols-outlined text-[20px]">remove</span>
+</button>
+</div>
+</div>
+<!-- TAP-TO-DROP HINT BANNER (Hidden by default, shown during pin mode) -->
+<div class="hidden fixed top-28 left-1/2 -translate-x-1/2 z-40 bg-inverse-surface text-inverse-on-surface text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-lg items-center gap-1.5" id="pin-mode-banner">
+<span class="material-symbols-outlined text-[16px] text-primary-fixed">touch_app</span>
+<span>Tap anywhere on map to report issue</span>
+<button class="ml-1 text-slate-400 hover:text-white" id="cancel-pin-mode">✕</button>
+</div>
+<!-- FLOATING CARD PREVIEW OF SELECTED ISSUE (Bottom Drawer) -->
+<div class="fixed bottom-20 left-3 right-3 z-30 transition-all duration-300 transform translate-y-[150%] opacity-0 pointer-events-auto" id="issue-detail-card">
+<div class="bg-surface-container-lowest/98 backdrop-blur-lg rounded-2xl p-3.5 shadow-2xl border border-white/70">
+<div class="flex items-center justify-between pb-1.5">
+<div class="w-8 h-1 rounded-full bg-surface-container-highest mx-auto"></div>
+<button class="w-6 h-6 flex items-center justify-center text-outline hover:text-on-surface" id="close-detail-card">
+<span class="material-symbols-outlined text-[18px]">close</span>
+</button>
+</div>
+<div class="flex items-start gap-3">
+<!-- Thumbnail photo/icon -->
+<div class="relative w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-primary/10 flex items-center justify-center border border-slate-200" id="card-photo-box">
+<span class="material-symbols-outlined text-primary text-[28px]" id="card-icon-preview">report_problem</span>
+<img alt="Issue photo" class="hidden w-full h-full object-cover" id="card-image"/>
+</div>
+<div class="flex flex-col min-w-0 flex-1">
+<div class="flex items-center justify-between gap-1 mb-0.5">
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-secondary-container text-on-secondary-container" id="card-category-badge">
+              Category
+            </span>
+<span class="text-[11px] font-semibold text-outline" id="card-ticket-id">#CVX-001</span>
+</div>
+<h2 class="text-[15px] font-bold text-on-surface truncate leading-tight" id="card-title">
+            Broken Streetlight
+          </h2>
+<p class="flex items-center gap-1 text-[12px] text-outline mt-0.5 truncate" id="card-address">
+<span class="material-symbols-outlined text-[14px] text-primary shrink-0">pin_drop</span>
+<span class="truncate">Oak St &amp; 4th Ave</span>
+</p>
+<p class="text-[11px] text-slate-500 mt-0.5" id="card-time">
+            Reported just now • Verified
+          </p>
+</div>
+</div>
+<!-- Action Buttons -->
+<div class="grid grid-cols-2 gap-2 mt-3 pt-2.5 border-t border-surface-container">
+<button class="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-surface-container text-on-surface text-xs font-bold active:bg-surface-container-high transition-colors" id="btn-card-resolve">
+<span class="material-symbols-outlined text-[16px] text-primary">check_circle</span>
+<span id="btn-card-resolve-label">Mark Resolved</span>
+</button>
+<button class="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-red-50 text-error text-xs font-bold active:bg-red-100 transition-colors" id="btn-card-delete">
+<span class="material-symbols-outlined text-[16px]">delete</span>
+<span>Remove Report</span>
+</button>
+</div>
+</div>
+</div>
+<!-- SLIDE-UP MODAL: NEW CIVIC REPORT -->
+<div class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-300" id="new-report-modal">
+<div class="w-full max-w-lg bg-surface-container-lowest rounded-t-3xl p-5 shadow-2xl transform translate-y-full transition-transform duration-300 max-h-[90vh] overflow-y-auto" id="report-sheet">
+<div class="flex items-center justify-between pb-3 border-b border-surface-container">
+<div class="flex items-center gap-2">
+<div class="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold">
+<span class="material-symbols-outlined text-[18px]">add_location</span>
+</div>
+<div>
+<h3 class="text-base font-bold text-on-surface">Submit Civic Report</h3>
+<p class="text-xs text-slate-500" id="report-gps-label">Live GPS Target</p>
+</div>
+</div>
+<button class="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:bg-surface-container" id="btn-close-modal">
+<span class="material-symbols-outlined text-[20px]">close</span>
+</button>
+</div>
+<form class="mt-4 flex flex-col gap-3.5" id="report-form">
+<!-- Coordinates & Location preview -->
+<div class="p-2.5 rounded-xl bg-surface-container-low border border-slate-200 text-xs flex items-center justify-between">
+<div class="flex items-center gap-2 truncate">
+<span class="material-symbols-outlined text-primary text-[18px]">my_location</span>
+<div class="truncate">
+<p class="font-bold text-on-surface truncate" id="form-address-preview">Resolving location...</p>
+<p class="text-[11px] text-slate-500" id="form-coords-preview">Lat: 0.000, Lng: 0.000</p>
+</div>
+</div>
+<button class="text-[11px] font-bold text-primary px-2 py-1 bg-white rounded-lg border border-primary/20 shrink-0" id="btn-refresh-form-gps" type="button">
+            Use GPS
+          </button>
+</div>
+<!-- Issue Category Selector -->
+<div>
+<label class="block text-xs font-bold text-on-surface mb-1.5">Problem Category</label>
+<div class="grid grid-cols-3 gap-2" id="category-selector-grid">
+<button class="cat-pill active flex flex-col items-center justify-center p-2.5 rounded-xl border border-primary bg-primary/10 text-primary text-xs font-bold gap-1 transition-all" data-val="Pothole" type="button">
+<span class="material-symbols-outlined text-[20px]">minor_crash</span>
+<span>Pothole</span>
+</button>
+<button class="cat-pill flex flex-col items-center justify-center p-2.5 rounded-xl border border-slate-200 bg-surface-container-lowest text-slate-600 text-xs font-bold gap-1 transition-all" data-val="Water Leak" type="button">
+<span class="material-symbols-outlined text-[20px]">water_drop</span>
+<span>Water Leak</span>
+</button>
+<button class="cat-pill flex flex-col items-center justify-center p-2.5 rounded-xl border border-slate-200 bg-surface-container-lowest text-slate-600 text-xs font-bold gap-1 transition-all" data-val="Streetlight" type="button">
+<span class="material-symbols-outlined text-[20px]">lightbulb</span>
+<span>Streetlight</span>
+</button>
+<button class="cat-pill flex flex-col items-center justify-center p-2.5 rounded-xl border border-slate-200 bg-surface-container-lowest text-slate-600 text-xs font-bold gap-1 transition-all" data-val="Garbage" type="button">
+<span class="material-symbols-outlined text-[20px]">delete_sweep</span>
+<span>Garbage</span>
+</button>
+<button class="cat-pill flex flex-col items-center justify-center p-2.5 rounded-xl border border-slate-200 bg-surface-container-lowest text-slate-600 text-xs font-bold gap-1 transition-all" data-val="Hazard" type="button">
+<span class="material-symbols-outlined text-[20px]">warning</span>
+<span>Hazard</span>
+</button>
+<button class="cat-pill flex flex-col items-center justify-center p-2.5 rounded-xl border border-slate-200 bg-surface-container-lowest text-slate-600 text-xs font-bold gap-1 transition-all" data-val="Graffiti" type="button">
+<span class="material-symbols-outlined text-[20px]">format_paint</span>
+<span>Graffiti</span>
+</button>
+</div>
+<input id="form-category-input" type="hidden" value="Pothole"/>
+</div>
+<!-- Issue Description -->
+<div>
+<label class="block text-xs font-bold text-on-surface mb-1" for="form-description">Issue Description</label>
+<textarea class="w-full text-xs rounded-xl border border-slate-200 bg-white p-2.5 focus:border-primary focus:ring-1 focus:ring-primary" id="form-description" placeholder="e.g. Hazardous deep road cavity near crosswalk..." required="" rows="2"></textarea>
+</div>
+<!-- Optional Photo Upload -->
+<div>
+<label class="block text-xs font-bold text-on-surface mb-1">Photo Evidence (Optional)</label>
+<div class="flex items-center gap-2">
+<input accept="image/*" class="hidden" id="report-photo-input" type="file">
+<button class="flex-1 py-2 px-3 border border-dashed border-slate-300 rounded-xl bg-surface-container-low flex items-center justify-center gap-1.5 text-xs text-slate-600 hover:bg-slate-100" id="btn-choose-photo" type="button">
+<span class="material-symbols-outlined text-[18px]">photo_camera</span>
+<span id="photo-upload-label">Browse for Photo</span>
+</button>
+<div class="hidden w-10 h-10 rounded-lg overflow-hidden border border-slate-300 shrink-0" id="photo-preview-thumbnail">
+<img alt="Preview" class="w-full h-full object-cover" id="form-img-tag" src=""/>
+</div>
+</div>
+</div>
+<!-- Submit Button -->
+<button class="mt-2 w-full py-3 px-4 rounded-xl bg-primary text-white text-sm font-bold shadow-md hover:bg-[#004f35] active:scale-[0.99] transition-all flex items-center justify-center gap-2" type="submit">
+<span class="material-symbols-outlined text-[18px]">send</span>
+<span>Submit &amp; Pin to Live Map</span>
+</button>
+</form>
+</div>
+</div>
+<!-- SENIOR PRODUCT DESIGNER CALIBRATED BOTTOM NAVIGATION (Map Active) -->
+<nav class="fixed bottom-0 inset-x-0 z-40 pb-safe bg-white/95 backdrop-blur-md border-t border-slate-200">
+<div class="relative flex justify-around items-center h-16 px-2">
+<!-- Home -->
+<a class="flex flex-col items-center justify-center min-w-[56px] min-h-[44px] text-slate-400 hover:text-slate-800 transition-colors" data-path="dashboard" href="home.html">
+<span class="material-symbols-outlined text-[22px]">home</span>
+<span class="text-[11px] font-medium mt-0.5">Home</span>
+</a>
+<!-- Map (Active) -->
+<a class="flex flex-col items-center justify-center min-w-[56px] min-h-[44px] text-primary font-bold transition-colors" data-path="live-map" href="#">
+<span class="material-symbols-outlined text-[22px]" style="font-variation-settings: 'FILL' 1;">map</span>
+<span class="text-[11px] font-bold mt-0.5">Map</span>
+</a>
+<!-- Elevated New Report Button -->
+<div class="relative flex items-center justify-center min-w-[56px] min-h-[44px]">
+<button aria-label="Add Report" class="absolute -top-4 flex items-center justify-center w-12 h-12 rounded-full bg-primary text-white shadow-lg hover:bg-[#00422c] transition-transform active:scale-95 border-2 border-white" id="nav-btn-new-report">
+<span class="material-symbols-outlined text-[26px]">add</span>
+</button>
+</div>
+<!-- Tracks -->
+<a class="flex flex-col items-center justify-center min-w-[56px] min-h-[44px] text-slate-400 hover:text-slate-800 transition-colors" data-path="tracks" href="tracks.html">
+<span class="material-symbols-outlined text-[22px]">alt_route</span>
+<span class="text-[11px] font-medium mt-0.5">Tracks</span>
+</a>
+<!-- Profile -->
+<a class="flex flex-col items-center justify-center min-w-[56px] min-h-[44px] text-slate-400 hover:text-slate-800 transition-colors" data-path="profile" href="profile.html">
+<span class="material-symbols-outlined text-[22px]">account_circle</span>
+<span class="text-[11px] font-medium mt-0.5">Profile</span>
+</a>
+</div>
+</nav>
+<!-- Interactive Logic: Real Geolocation + Clean Vector Leaflet + LocalStorage DB -->
+<script src="civifix-api.js"></script>
+<script>
+    (function() {
+      // 1. Storage & State Management
+      const STORAGE_KEY = 'civifix_issues_db';
+      function saveStoredIssues(issues) {
+        // No-op for legacy compatibility in other parts of the script
+      }
+
+      let issuesList = [];
+      let activeFilterCategory = 'ALL';
+      let currentSelectedIssueId = null;
+      let isDropPinMode = false;
+
+      let userLocation = null;
+      let targetFormCoords = null;
+      let attachedPhotoData = null;
+
+      async function loadMapReports() {
+        try {
+          const result = await CivifixAPI.listPublicReports({ limit: '1000' });
+          issuesList = result.reports || [];
+          renderMarkers();
+        } catch (error) {
+          console.error('Could not load reports from MongoDB.', error);
+        }
+      }
+
+      // 2. Initialize Leaflet Map with Clean OpenStreetMap public standard tiles (NO API keys, NO watermarks)
+      const map = CivifixMap.createMap('civic-map');
+
+      // 3. User GPS Marker Beacon
+      const userGpsIcon = L.divIcon({
+        className: 'user-gps-container',
+        html: `
+          <div class="relative flex items-center justify-center w-6 h-6">
+            <div class="gps-pulse-beacon absolute w-4 h-4 rounded-full bg-secondary ring-4 ring-white shadow-lg"></div>
+            <div class="w-2.5 h-2.5 rounded-full bg-white z-10"></div>
+          </div>
+        `,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      });
+
+      const userMarker = L.marker([0, 0], {
+        icon: userGpsIcon,
+        zIndexOffset: 1000
+      });
+
+      const userAccuracyCircle = L.circle([0, 0], {
+        radius: 40,
+        color: '#006590',
+        weight: 1,
+        opacity: 0.4,
+        fillColor: '#85cbfd',
+        fillOpacity: 0.15
+      });
+
+      // 4. Live Geolocation Watcher / Acquisition
+      const gpsStatusText = document.getElementById('gps-status-text');
+      const gpsStatusPulse = document.getElementById('gps-status-pulse');
+      const headerAddressText = document.getElementById('header-address-text');
+
+      function formatCoordinates(lat, lng) {
+        const latitudeDirection = lat >= 0 ? 'N' : 'S';
+        const longitudeDirection = lng >= 0 ? 'E' : 'W';
+        return `${Math.abs(lat).toFixed(5)}° ${latitudeDirection}, ${Math.abs(lng).toFixed(5)}° ${longitudeDirection}`;
+      }
+
+      function setGpsStatus(message, state) {
+        gpsStatusText.textContent = message;
+        gpsStatusPulse.classList.remove('bg-emerald-500', 'bg-amber-500', 'bg-rose-500');
+        gpsStatusPulse.classList.add(state === 'active' ? 'bg-emerald-500' : state === 'error' ? 'bg-rose-500' : 'bg-amber-500');
+        gpsStatusPulse.classList.toggle('animate-pulse', state !== 'active');
+        if (state === 'error' && !userLocation) headerAddressText.textContent = 'Location unavailable';
+      }
+
+      function updateGpsUI(lat, lng, accuracy = 40) {
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
+
+        userLocation = { lat, lng, accuracy, locked: true };
+        userMarker.setLatLng([lat, lng]);
+        userAccuracyCircle.setLatLng([lat, lng]);
+        userAccuracyCircle.setRadius(Math.max(accuracy, 10));
+        if (!map.hasLayer(userMarker)) userMarker.addTo(map);
+        if (!map.hasLayer(userAccuracyCircle)) userAccuracyCircle.addTo(map);
+
+        const coordinates = formatCoordinates(lat, lng);
+        setGpsStatus(`GPS Active • ${coordinates} (±${Math.round(accuracy)} m)`, 'active');
+        headerAddressText.textContent = `Current location • ${coordinates}`;
+      }
+
+      function requestCurrentLocation({ centerMap = false, updateReportLocation = false } = {}) {
+        if (!navigator.geolocation) {
+          setGpsStatus('Location services are not available in this browser', 'error');
+          return;
+        }
+
+        setGpsStatus('Requesting a fresh GPS fix...', 'pending');
+        navigator.geolocation.getCurrentPosition((position) => {
+          const { latitude, longitude, accuracy } = position.coords;
+          updateGpsUI(latitude, longitude, accuracy);
+          if (centerMap) map.flyTo([latitude, longitude], 16, { animate: true, duration: 1.2 });
+
+          if (updateReportLocation) {
+            targetFormCoords = { lat: latitude, lng: longitude };
+            document.getElementById('form-coords-preview').textContent = `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`;
+            document.getElementById('form-address-preview').textContent = `GPS location • ${formatCoordinates(latitude, longitude)}`;
+          }
+        }, (error) => {
+          const message = error.code === 1
+            ? 'Location permission denied; allow access and retry'
+            : error.code === 3
+              ? 'GPS timed out; move outdoors and retry'
+              : 'Current location unavailable; check device location settings';
+          setGpsStatus(message, 'error');
+          if (updateReportLocation) document.getElementById('form-address-preview').textContent = message;
+        }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+      }
+
+      if ('geolocation' in navigator) {
+        requestCurrentLocation();
+        navigator.geolocation.watchPosition((position) => {
+          updateGpsUI(position.coords.latitude, position.coords.longitude, position.coords.accuracy);
+        }, (error) => {
+          if (!userLocation) {
+            const message = error.code === 1
+              ? 'Location permission denied; allow access and retry'
+              : 'Waiting for an accurate GPS fix...';
+            setGpsStatus(message, error.code === 1 ? 'error' : 'pending');
+          }
+        }, { enableHighAccuracy: true, maximumAge: 0 });
+      } else {
+        setGpsStatus('Location services are not available in this browser', 'error');
+      }
+
+      // 5. Category Icons & Styling Helpers
+      function getCategoryMeta(cat) {
+        return CivifixMap.getCategoryMeta(cat);
+      }
+
+      // 6. Dynamic Markers Rendering on the Map
+      let markersGroup = CivifixMap.createMarkerLayer(map);
+      let mapSearchQuery = '';
+
+      function renderMarkers() {
+        CivifixMap.renderIssues(markersGroup, issuesList, {
+          category: activeFilterCategory,
+          query: mapSearchQuery,
+          selectedId: currentSelectedIssueId,
+          onSelect: selectIssue
+        });
+        const totalCountEl = document.getElementById('total-issues-count');
+        if (totalCountEl) totalCountEl.textContent = issuesList.length;
+      }
+
+      // 7. Issue Detail Drawer interactions
+      const detailCard = document.getElementById('issue-detail-card');
+      const cardTitle = document.getElementById('card-title');
+      const cardAddress = document.getElementById('card-address');
+      const cardTime = document.getElementById('card-time');
+      const cardTicketId = document.getElementById('card-ticket-id');
+      const cardCategoryBadge = document.getElementById('card-category-badge');
+      const cardIconPreview = document.getElementById('card-icon-preview');
+      const cardImage = document.getElementById('card-image');
+      const cardResolveBtn = document.getElementById('btn-card-resolve');
+      const cardResolveLabel = document.getElementById('btn-card-resolve-label');
+      const cardDeleteBtn = document.getElementById('btn-card-delete');
+
+      function selectIssue(issue) {
+        currentSelectedIssueId = issue.id;
+        const meta = getCategoryMeta(issue.category);
+
+        cardTitle.textContent = issue.description || issue.category;
+        const pinIcon = document.createElement('span');
+        pinIcon.className = 'material-symbols-outlined text-[14px] text-primary shrink-0';
+        pinIcon.textContent = 'pin_drop';
+        const addressText = document.createElement('span');
+        addressText.className = 'truncate';
+        addressText.textContent = issue.address || '';
+        cardAddress.replaceChildren(pinIcon, addressText);
+
+        const timeAgo = Math.round((Date.now() - issue.timestamp) / 60000);
+        const timeText = timeAgo < 60 ? `${timeAgo}m ago` : `${Math.round(timeAgo/60)}h ago`;
+        cardTime.textContent = `Reported ${timeText} • Status: ${issue.status}`;
+        cardTicketId.textContent = `#${issue.id}`;
+
+        cardCategoryBadge.textContent = issue.category;
+        cardCategoryBadge.className = `inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${meta.badgeBg} ${meta.badgeText}`;
+
+        if (issue.photo) {
+          cardImage.src = issue.photo;
+          cardImage.classList.remove('hidden');
+          cardIconPreview.classList.add('hidden');
+        } else {
+          cardImage.classList.add('hidden');
+          cardIconPreview.classList.remove('hidden');
+          cardIconPreview.textContent = meta.icon;
+          cardIconPreview.className = `material-symbols-outlined ${meta.text} text-[28px]`;
+        }
+
+        if (issue.status === 'Resolved') {
+          cardResolveLabel.textContent = 'Reopen Issue';
+        } else {
+          cardResolveLabel.textContent = 'Mark Resolved';
+        }
+
+        // Show Drawer
+        detailCard.classList.remove('translate-y-[150%]', 'opacity-0');
+        map.panTo([issue.lat, issue.lng]);
+        renderMarkers();
+      }
+
+      function hideDetailCard() {
+        currentSelectedIssueId = null;
+        detailCard.classList.add('translate-y-[150%]', 'opacity-0');
+        renderMarkers();
+      }
+
+      document.getElementById('close-detail-card').addEventListener('click', hideDetailCard);
+
+      // Resolve button toggle
+      cardResolveBtn.addEventListener('click', async () => {
+        if (!currentSelectedIssueId) return;
+        const issue = issuesList.find(i => i.id === currentSelectedIssueId);
+        if (issue) {
+          const nextStatus = issue.status === 'Resolved' ? 'In Progress' : 'Resolved';
+          cardResolveBtn.disabled = true;
+          try {
+            const updated = await CivifixAPI.updateReport(issue.id, { status: nextStatus });
+            issuesList = issuesList.map(item => item.id === updated.id ? updated : item);
+            saveStoredIssues(issuesList);
+            selectIssue(updated);
+          } catch (error) {
+            showMapError(error.message);
+          } finally {
+            cardResolveBtn.disabled = false;
+          }
+        }
+      });
+
+      // Delete button
+      cardDeleteBtn.addEventListener('click', async () => {
+        if (!currentSelectedIssueId) return;
+        if (confirm('Delete this civic report from live database?')) {
+          const reportId = currentSelectedIssueId;
+          cardDeleteBtn.disabled = true;
+          try {
+            await CivifixAPI.deleteReport(reportId);
+            issuesList = issuesList.filter(i => i.id !== reportId);
+            saveStoredIssues(issuesList);
+            hideDetailCard();
+          } catch (error) {
+            showMapError(error.message);
+          } finally {
+            cardDeleteBtn.disabled = false;
+          }
+        }
+      });
+
+      // 8. New Report Flow & Pin Drop
+      const reportModal = document.getElementById('new-report-modal');
+      const reportSheet = document.getElementById('report-sheet');
+      const reportForm = document.getElementById('report-form');
+      const formAddressPreview = document.getElementById('form-address-preview');
+      const formCoordsPreview = document.getElementById('form-coords-preview');
+      const formCategoryInput = document.getElementById('form-category-input');
+      const formDescription = document.getElementById('form-description');
+      const pinModeBanner = document.getElementById('pin-mode-banner');
+
+      function openReportModal(lat, lng) {
+        const hasCoordinates = Number.isFinite(lat) && Number.isFinite(lng);
+        targetFormCoords = hasCoordinates ? { lat, lng } : null;
+        formCoordsPreview.textContent = hasCoordinates ? `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}` : 'Waiting for GPS location';
+        formAddressPreview.textContent = hasCoordinates ? `Selected location • ${formatCoordinates(lat, lng)}` : 'Getting current location...';
+
+        reportModal.classList.remove('opacity-0', 'pointer-events-none');
+        reportSheet.classList.remove('translate-y-full');
+        hideDetailCard();
+        if (!hasCoordinates) requestCurrentLocation({ centerMap: true, updateReportLocation: true });
+      }
+
+      function closeReportModal() {
+        reportModal.classList.add('opacity-0', 'pointer-events-none');
+        reportSheet.classList.add('translate-y-full');
+        // Reset attached photo preview
+        attachedPhotoData = null;
+        document.getElementById('photo-preview-thumbnail').classList.add('hidden');
+        document.getElementById('photo-upload-label').textContent = 'Browse for Photo';
+        document.getElementById('report-photo-input').value = '';
+        document.getElementById('form-img-tag').removeAttribute('src');
+        reportForm.reset();
+      }
+
+      document.getElementById('btn-close-modal').addEventListener('click', closeReportModal);
+      reportModal.addEventListener('click', (e) => {
+        if (e.target === reportModal) closeReportModal();
+      });
+
+      // Category Pill selection
+      const catPills = document.querySelectorAll('.cat-pill');
+      catPills.forEach(pill => {
+        pill.addEventListener('click', function() {
+          catPills.forEach(p => {
+            p.classList.remove('border-primary', 'bg-primary/10', 'text-primary');
+            p.classList.add('border-slate-200', 'bg-surface-container-lowest', 'text-slate-600');
+          });
+          this.classList.remove('border-slate-200', 'bg-surface-container-lowest', 'text-slate-600');
+          this.classList.add('border-primary', 'bg-primary/10', 'text-primary');
+          formCategoryInput.value = this.getAttribute('data-val');
+        });
+      });
+
+      // Select and preview a real photo, resized to keep localStorage usage modest.
+      const btnChoosePhoto = document.getElementById('btn-choose-photo');
+      const photoInput = document.getElementById('report-photo-input');
+      const formImgTag = document.getElementById('form-img-tag');
+      const photoThumb = document.getElementById('photo-preview-thumbnail');
+      const photoLabel = document.getElementById('photo-upload-label');
+
+      btnChoosePhoto.addEventListener('click', () => photoInput.click());
+      photoInput.addEventListener('change', () => {
+        const file = photoInput.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.addEventListener('load', () => {
+          const image = new Image();
+          image.addEventListener('load', () => {
+            const scale = Math.min(1, 1280 / Math.max(image.naturalWidth, image.naturalHeight));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(image.naturalWidth * scale);
+            canvas.height = Math.round(image.naturalHeight * scale);
+            canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+            attachedPhotoData = canvas.toDataURL('image/jpeg', 0.75);
+            formImgTag.src = attachedPhotoData;
+            photoThumb.classList.remove('hidden');
+            photoLabel.textContent = 'Photo Attached';
+          }, { once: true });
+          image.src = reader.result;
+        }, { once: true });
+        reader.readAsDataURL(file);
+      });
+
+      // Submit Form
+      reportForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!targetFormCoords) {
+          formAddressPreview.textContent = 'Location required. Use GPS or tap the map to choose a point.';
+          return;
+        }
+        const category = formCategoryInput.value;
+        const description = formDescription.value.trim();
+        const address = formAddressPreview.textContent || 'Ward 4 Downtown';
+        const submitButton = reportForm.querySelector('button[type="submit"]');
+        if (submitButton) submitButton.disabled = true;
+        try {
+          const newReport = await CivifixAPI.createReport({
+            category,
+            title: description || category,
+            description,
+            address,
+            lat: targetFormCoords.lat,
+            lng: targetFormCoords.lng,
+            photo: attachedPhotoData,
+            source: 'Citizen App'
+          });
+          issuesList.unshift(newReport);
+          saveStoredIssues(issuesList);
+
+          closeReportModal();
+          renderMarkers();
+          selectIssue(newReport);
+        } catch (error) {
+          showMapError(error.message);
+        } finally {
+          if (submitButton) submitButton.disabled = false;
+        }
+      });
+
+      // Drop pin mode toggle
+      const btnDropPinMode = document.getElementById('btn-drop-pin-mode');
+      btnDropPinMode.addEventListener('click', () => {
+        isDropPinMode = !isDropPinMode;
+        if (isDropPinMode) {
+          btnDropPinMode.classList.add('bg-primary', 'text-white');
+          pinModeBanner.classList.remove('hidden');
+          pinModeBanner.classList.add('flex');
+        } else {
+          btnDropPinMode.classList.remove('bg-primary', 'text-white');
+          pinModeBanner.classList.add('hidden');
+          pinModeBanner.classList.remove('flex');
+        }
+      });
+
+      document.getElementById('cancel-pin-mode').addEventListener('click', () => {
+        isDropPinMode = false;
+        btnDropPinMode.classList.remove('bg-primary', 'text-white');
+        pinModeBanner.classList.add('hidden');
+        pinModeBanner.classList.remove('flex');
+      });
+
+      // Map Click Handler: Tap to drop pin or cancel selected issue
+      map.on('click', (e) => {
+        if (isDropPinMode) {
+          isDropPinMode = false;
+          btnDropPinMode.classList.remove('bg-primary', 'text-white');
+          pinModeBanner.classList.add('hidden');
+          pinModeBanner.classList.remove('flex');
+          openReportModal(e.latlng.lat, e.latlng.lng);
+        } else {
+          hideDetailCard();
+        }
+      });
+
+      // Quick Report buttons
+      document.getElementById('btn-quick-new-report').addEventListener('click', () => {
+        window.location.href = 'add_report.html';
+      });
+      document.getElementById('nav-btn-new-report').addEventListener('click', () => {
+        window.location.href = 'add_report.html';
+      });
+      if (window.location.hash === '#report') {
+        openReportModal(userLocation?.lat, userLocation?.lng);
+      }
+
+      // Zoom Controls
+      document.getElementById('btn-zoom-in').addEventListener('click', () => map.zoomIn());
+      document.getElementById('btn-zoom-out').addEventListener('click', () => map.zoomOut());
+
+      // Locate Me Button
+      document.getElementById('btn-locate-me').addEventListener('click', () => requestCurrentLocation({ centerMap: true }));
+      document.getElementById('btn-refresh-form-gps').addEventListener('click', () => requestCurrentLocation({ centerMap: true, updateReportLocation: true }));
+
+      // Filter chips
+      const filterBtns = document.querySelectorAll('.filter-category-btn');
+      filterBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+          filterBtns.forEach(b => {
+            b.classList.remove('bg-primary-container', 'text-on-primary');
+            b.classList.add('bg-surface-container-lowest/90', 'text-on-surface-variant');
+          });
+          this.classList.remove('bg-surface-container-lowest/90', 'text-on-surface-variant');
+          this.classList.add('bg-primary-container', 'text-on-primary');
+
+          activeFilterCategory = this.getAttribute('data-category');
+          renderMarkers();
+        });
+      });
+
+      // Search input filter
+      const searchInput = document.getElementById('map-search-input');
+      searchInput.addEventListener('input', (e) => {
+        mapSearchQuery = e.target.value;
+        renderMarkers();
+      });
+
+      // Initial marker load
+      renderMarkers();
+      CivifixAPI.listPublicReports().then(({ reports }) => {
+        issuesList = reports;
+        saveStoredIssues(issuesList);
+        renderMarkers();
+        document.getElementById('map-api-error')?.remove();
+      }).catch(error => {
+        console.error('Could not load reports from MongoDB.', error);
+        showMapError(error.message);
+      });
+      window.setInterval(() => {
+        if (document.hidden) return;
+        CivifixAPI.listPublicReports().then(({ reports }) => {
+          issuesList = reports;
+          saveStoredIssues(issuesList);
+          renderMarkers();
+          document.getElementById('map-api-error')?.remove();
+        }).catch(error => {
+          console.error('Could not refresh reports from MongoDB.', error);
+        });
+      }, 15000);
+
+      function showMapError(message) {
+        let notice = document.getElementById('map-api-error');
+        if (!notice) {
+          notice = document.createElement('div');
+          notice.id = 'map-api-error';
+          notice.className = 'fixed top-24 left-1/2 -translate-x-1/2 z-[60] max-w-[90vw] rounded-lg bg-error text-on-error px-4 py-3 text-sm font-semibold shadow-xl';
+          notice.setAttribute('role', 'alert');
+          document.body.append(notice);
+        }
+        notice.textContent = message;
+      }
+    })();
+  </script>
+</body></html>

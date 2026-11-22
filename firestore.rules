@@ -1,0 +1,501 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Strict Zero-Trust Admin Verification:
+    // 1. If /admins/{uid} exists and active == false, ALWAYS deny access
+    //    even when a stale Firebase Auth custom claim (admin == true) is present.
+    // 2. If /admins/{uid} exists and active == true, allow administrative access.
+    // 3. If /admins/{uid} does NOT exist, allow access only via verified custom claim
+    //    (admin == true) and not explicitly deactivated (active absent or active == true).
+    function isAdmin() {
+      return isAuthenticated() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+          ? (
+              'active' in get(/databases/$(database)/documents/admins/$(request.auth.uid)).data
+              && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.active == true
+            )
+          : (
+              'admin' in request.auth.token
+              && request.auth.token.admin == true
+              && (!('active' in request.auth.token) || request.auth.token.active == true)
+            )
+      );
+    }
+
+    // Strict Superadmin Management Authorization:
+    // 1. Always requires active verified isAdmin() clearance.
+    // 2. If /admins/{uid} exists, requires active == true AND explicit role == 'superadmin'
+    //    (matching ADMIN_ROLE_CAPABILITIES.canManageAdmins) with no custom-claim fallback.
+    // 3. If /admins/{uid} does NOT exist, allows fallback ONLY when verified custom claims
+    //    contain admin == true, active == true (or absent), and explicit role == 'superadmin'.
+    // 4. Never authorizes using email alone.
+    function canManageAdmins() {
+      return isAdmin() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+          ? (
+              'active' in get(/databases/$(database)/documents/admins/$(request.auth.uid)).data
+              && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.active == true
+              && 'role' in get(/databases/$(database)/documents/admins/$(request.auth.uid)).data
+              && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'superadmin'
+            )
+          : (
+              'admin' in request.auth.token
+              && request.auth.token.admin == true
+              && (!('active' in request.auth.token) || request.auth.token.active == true)
+              && 'role' in request.auth.token
+              && request.auth.token.role == 'superadmin'
+            )
+      );
+    }
+
+    // Strict Archive Authorization:
+    // 1. Always requires active verified isAdmin() clearance.
+    // 2. If /admins/{uid} exists, requires explicit role in ['superadmin', 'department_head']
+    //    (matching ADMIN_ROLE_CAPABILITIES.canArchiveReports) with no custom-claim fallback.
+    // 3. If /admins/{uid} does NOT exist, requires verified custom claim admin == true,
+    //    not deactivated (active != false), and an explicit role claim in
+    //    ['superadmin', 'department_head'] (never defaults bare admin: true to superadmin).
+    function canArchiveReports() {
+      return isAdmin() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+          ? (
+              'role' in get(/databases/$(database)/documents/admins/$(request.auth.uid)).data
+              && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role in ['superadmin', 'department_head']
+            )
+          : (
+              'admin' in request.auth.token
+              && request.auth.token.admin == true
+              && (!('active' in request.auth.token) || request.auth.token.active == true)
+              && 'role' in request.auth.token
+              && request.auth.token.role in ['superadmin', 'department_head']
+            )
+      );
+    }
+
+    // Strict Audit Integrity for report_archived entries:
+    // Verifies archive role clearance, matching actorUid, targetType == 'civic_report',
+    // safe single-segment report ID, bounded summary, and post-commit report archive state
+    // via existsAfter()/getAfter() so atomic archive transactions and audit logs stay linked.
+    function isValidArchiveAuditLog() {
+      let d = request.resource.data;
+      return canArchiveReports()
+        && d.actorUid == request.auth.uid
+        && d.actorRole == 'admin'
+        && d.targetType == 'civic_report'
+        && d.targetId is string
+        && d.targetId.size() > 0
+        && d.targetId.size() <= 128
+        && d.targetId.matches('^[a-zA-Z0-9_-]+$')
+        && d.summary is string
+        && d.summary.size() > 0
+        && d.summary.size() <= 1200
+        && existsAfter(/databases/$(database)/documents/civic_reports/$(d.targetId))
+        && 'archived' in getAfter(/databases/$(database)/documents/civic_reports/$(d.targetId)).data
+        && getAfter(/databases/$(database)/documents/civic_reports/$(d.targetId)).data.archived == true
+        && 'archivedBy' in getAfter(/databases/$(database)/documents/civic_reports/$(d.targetId)).data
+        && getAfter(/databases/$(database)/documents/civic_reports/$(d.targetId)).data.archivedBy == request.auth.uid;
+    }
+
+    function isReportOwnerById(reportId) {
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/civic_reports/$(reportId))
+        && get(/databases/$(database)/documents/civic_reports/$(reportId)).data.userId == request.auth.uid;
+    }
+
+    function isNonArchivedReportById(reportId) {
+      return exists(/databases/$(database)/documents/civic_reports/$(reportId))
+        && (
+          !('archived' in get(/databases/$(database)/documents/civic_reports/$(reportId)).data)
+          || get(/databases/$(database)/documents/civic_reports/$(reportId)).data.archived != true
+        );
+    }
+
+    function hasNoPrivilegedUserFields(data) {
+      return !data.keys().hasAny([
+        'role',
+        'isAdmin',
+        'admin',
+        'active',
+        'permissions',
+        'customClaims',
+        'superadmin',
+        'department'
+      ]);
+    }
+
+    function isValidUserProfileWrite(userId) {
+      let d = request.resource.data;
+      return d.id == userId
+        && d.fullName is string
+        && d.fullName.size() > 0
+        && d.fullName.size() <= 150
+        && d.email is string
+        && d.email.size() <= 254
+        && (!('phone' in d) || (d.phone is string && d.phone.size() <= 40))
+        && (!('ward' in d) || (d.ward is string && d.ward.size() <= 120))
+        && (!('city' in d) || (d.city is string && d.city.size() <= 120))
+        && (!('preferredLanguage' in d) || (d.preferredLanguage is string && d.preferredLanguage.size() <= 60))
+        && (!('avatarColor' in d) || (d.avatarColor is string && d.avatarColor.size() <= 40))
+        && (!('avatarUrl' in d) || d.avatarUrl == null || (d.avatarUrl is string && d.avatarUrl.size() <= 2000))
+        && (!('notificationPreferences' in d) || d.notificationPreferences is map)
+        && (!('updatedAt' in d) || (d.updatedAt is string && d.updatedAt.size() >= 10))
+        && hasNoPrivilegedUserFields(d);
+    }
+
+    // 1. User Profiles
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAuthenticated()
+                    && request.auth.uid == userId
+                    && request.resource.data.keys().hasOnly([
+                      'id', 'fullName', 'email', 'phone', 'ward', 'city',
+                      'preferredLanguage', 'avatarColor', 'avatarUrl',
+                      'notificationPreferences', 'updatedAt'
+                    ])
+                    && isValidUserProfileWrite(userId);
+      allow update: if isAuthenticated()
+                    && request.auth.uid == userId
+                    && (!('id' in resource.data) || request.resource.data.id == resource.data.id)
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                      'id', 'fullName', 'email', 'phone', 'ward', 'city',
+                      'preferredLanguage', 'avatarColor', 'avatarUrl',
+                      'notificationPreferences', 'updatedAt'
+                    ])
+                    && isValidUserProfileWrite(userId);
+      allow delete: if false;
+    }
+
+    function isValidAdminDocWrite(adminId) {
+      let d = request.resource.data;
+      return d.keys().hasOnly([
+          'uid', 'email', 'displayName', 'role',
+          'department', 'ward', 'active', 'createdAt', 'updatedAt'
+        ])
+        && 'uid' in d
+        && d.uid is string
+        && d.uid == adminId
+        && 'email' in d
+        && d.email is string
+        && d.email.size() >= 3
+        && d.email.size() <= 254
+        && 'role' in d
+        && d.role in ['superadmin', 'ward_admin', 'department_head', 'staff']
+        && (!('active' in d) || d.active is bool)
+        && (!('displayName' in d) || (d.displayName is string && d.displayName.size() <= 150))
+        && (!('department' in d) || (d.department is string && d.department.size() <= 120))
+        && (!('ward' in d) || (d.ward is string && d.ward.size() <= 60))
+        && (!('createdAt' in d) || d.createdAt is timestamp || (d.createdAt is string && d.createdAt.size() >= 10 && d.createdAt.size() <= 40))
+        && (!('updatedAt' in d) || d.updatedAt is timestamp || (d.updatedAt is string && d.updatedAt.size() >= 10 && d.updatedAt.size() <= 40));
+    }
+
+    // 2. Municipal Admins Directory (Readable by active admins; managed strictly by active superadmins)
+    match /admins/{adminId} {
+      allow read: if isAdmin();
+      allow create: if canManageAdmins()
+                    && isValidAdminDocWrite(adminId);
+      allow update: if canManageAdmins()
+                    && request.auth.uid != adminId
+                    && (!('uid' in resource.data) || request.resource.data.uid == resource.data.uid)
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                      'uid', 'email', 'displayName', 'role',
+                      'department', 'ward', 'active', 'createdAt', 'updatedAt'
+                    ])
+                    && isValidAdminDocWrite(adminId);
+      allow delete: if canManageAdmins()
+                    && request.auth.uid != adminId;
+    }
+
+    // 3. Civic Reports Collection
+    match /civic_reports/{reportId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() || resource.data.userId == request.auth.uid
+      );
+
+      allow create: if isAuthenticated()
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.id == reportId
+                    && request.resource.data.trackingNumber is string
+                    && request.resource.data.trackingNumber.size() >= 5
+                    && request.resource.data.trackingNumber.size() <= 40
+                    && request.resource.data.category in [
+                      'Garbage accumulation',
+                      'Overflowing dustbins',
+                      'Potholes',
+                      'Damaged roads',
+                      'Drainage problems',
+                      'Water leakage',
+                      'Streetlight problems',
+                      'Other civic issues',
+                      // Temporary backward compatibility for legacy 6 categories during UI transition
+                      'Garbage',
+                      'Pothole',
+                      'Water Leakage',
+                      'Drainage',
+                      'Broken Streetlight',
+                      'Other'
+                    ]
+                    && request.resource.data.severity in [
+                      'Low',
+                      'Medium',
+                      'Moderate',
+                      'High',
+                      'Hazard',
+                      'Minor'
+                    ]
+                    && request.resource.data.status in ['Submitted', 'Under Review']
+                    && request.resource.data.description is string
+                    && request.resource.data.description.size() > 0
+                    && request.resource.data.description.size() <= 4000
+                    && request.resource.data.location is map
+                    && request.resource.data.location.address is string
+                    && request.resource.data.location.address.size() > 0
+                    && request.resource.data.location.address.size() <= 500
+                    && (request.resource.data.location.latitude == null || request.resource.data.location.latitude is number)
+                    && (request.resource.data.location.longitude == null || request.resource.data.location.longitude is number)
+                    && request.resource.data.citizenNotes is list
+                    && request.resource.data.citizenNotes.size() <= 20
+                    && request.resource.data.submittedAt is string
+                    && request.resource.data.submittedAt.size() >= 10
+                    && request.resource.data.updatedAt is string
+                    && request.resource.data.updatedAt.size() >= 10
+                    && (!('isDemo' in request.resource.data) || request.resource.data.isDemo == false)
+                    && !request.resource.data.keys().hasAny([
+                      'assignedDepartment',
+                      'assignedOfficer',
+                      'adminRemarks',
+                      'resolutionDetails',
+                      'resolutionPhotoUrl',
+                      'resolvedAt',
+                      'updatedBy',
+                      'duplicateOf',
+                      'withdrawnAt',
+                      'withdrawnBy',
+                      'withdrawalReason',
+                      'archived',
+                      'archivedAt',
+                      'archivedBy',
+                      'archiveReason'
+                    ]);
+
+      allow update: if isAuthenticated() && (
+        // Citizen branch 1: append follow-up citizen note on own non-archived report
+        (
+          'userId' in resource.data
+          && resource.data.userId == request.auth.uid
+          && (!('archived' in resource.data) || resource.data.archived != true)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['citizenNotes', 'updatedAt'])
+          && request.resource.data.citizenNotes is list
+          && request.resource.data.citizenNotes.size() <= 50
+          && (
+            !('citizenNotes' in resource.data)
+            ? request.resource.data.citizenNotes.size() <= 1
+            : (
+                resource.data.citizenNotes is list
+                && request.resource.data.citizenNotes.hasAll(resource.data.citizenNotes)
+                && request.resource.data.citizenNotes.size() >= resource.data.citizenNotes.size()
+                && request.resource.data.citizenNotes.size() <= resource.data.citizenNotes.size() + 1
+              )
+          )
+          && request.resource.data.updatedAt is string
+          && request.resource.data.updatedAt.size() >= 10
+        )
+        ||
+        // Citizen branch 2: withdraw own non-archived report while status is Submitted or Under Review
+        (
+          'userId' in resource.data
+          && resource.data.userId == request.auth.uid
+          && (!('archived' in resource.data) || resource.data.archived != true)
+          && resource.data.status in ['Submitted', 'Under Review']
+          && request.resource.data.status == 'Withdrawn'
+          && request.resource.data.userId == resource.data.userId
+          && (!('id' in resource.data) || request.resource.data.id == resource.data.id)
+          && (!('trackingNumber' in resource.data) || request.resource.data.trackingNumber == resource.data.trackingNumber)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status',
+            'withdrawnAt',
+            'withdrawnBy',
+            'withdrawalReason',
+            'timeline',
+            'updatedAt'
+          ])
+          && request.resource.data.withdrawnBy == request.auth.uid
+          && request.resource.data.withdrawnAt is string
+          && request.resource.data.withdrawnAt.size() >= 10
+          && (!('withdrawalReason' in request.resource.data) || (request.resource.data.withdrawalReason is string && request.resource.data.withdrawalReason.size() <= 1000))
+          && request.resource.data.timeline is list
+          && request.resource.data.updatedAt is string
+          && request.resource.data.updatedAt.size() >= 10
+        )
+        ||
+        // Admin branch 1: active authorized administrators updating workflow & resolution fields
+        (
+          isAdmin()
+          && (!('userId' in resource.data) || request.resource.data.userId == resource.data.userId)
+          && (!('trackingNumber' in resource.data) || request.resource.data.trackingNumber == resource.data.trackingNumber)
+          && (!('id' in resource.data) || request.resource.data.id == resource.data.id)
+          && (!('archived' in resource.data) || resource.data.archived != true)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status',
+            'department',
+            'assignedDepartment',
+            'assignedOfficer',
+            'adminRemarks',
+            'resolutionDetails',
+            'resolutionPhotoUrl',
+            'resolvedAt',
+            'timeline',
+            'updatedAt',
+            'updatedBy',
+            'duplicateOf'
+          ])
+          && request.resource.data.status in [
+            'Submitted',
+            'Under Review',
+            'Assigned',
+            'In Progress',
+            'Resolved',
+            'Rejected'
+          ]
+          && (
+            request.resource.data.status != 'Resolved' ||
+            (request.resource.data.resolutionDetails is string && request.resource.data.resolutionDetails.size() > 0)
+          )
+          && request.resource.data.updatedAt is string
+          && request.resource.data.updatedAt.size() >= 10
+        )
+        ||
+        // Admin branch 2: authorized archive (soft-delete) preserving status & requiring server timestamp
+        (
+          canArchiveReports()
+          && (!('userId' in resource.data) || request.resource.data.userId == resource.data.userId)
+          && (!('trackingNumber' in resource.data) || request.resource.data.trackingNumber == resource.data.trackingNumber)
+          && (!('id' in resource.data) || request.resource.data.id == resource.data.id)
+          && (!('status' in resource.data) || request.resource.data.status == resource.data.status)
+          && (!('archived' in resource.data) || resource.data.archived != true)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'archived',
+            'archivedAt',
+            'archivedBy',
+            'archiveReason',
+            'timeline',
+            'updatedAt',
+            'updatedBy'
+          ])
+          && request.resource.data.archived == true
+          && request.resource.data.archivedAt == request.time
+          && request.resource.data.archivedBy == request.auth.uid
+          && (!('archiveReason' in request.resource.data) || (request.resource.data.archiveReason is string && request.resource.data.archiveReason.size() <= 1000))
+          && (!('timeline' in request.resource.data) || request.resource.data.timeline is list)
+          && request.resource.data.updatedAt is string
+          && request.resource.data.updatedAt.size() >= 10
+          && request.resource.data.updatedBy == request.auth.uid
+        )
+      );
+
+      allow delete: if canManageAdmins();
+
+      // Immutable status transition audit trail per report
+      match /statusHistory/{historyId} {
+        allow read: if isAuthenticated() && (
+          isReportOwnerById(reportId) || isAdmin()
+        );
+        allow create: if isAuthenticated() && (
+          (
+            isAdmin()
+            && request.resource.data.reportId == reportId
+            && request.resource.data.changedByUid == request.auth.uid
+            && request.resource.data.changedByRole == 'admin'
+            && request.resource.data.toStatus in [
+              'Submitted',
+              'Under Review',
+              'Assigned',
+              'In Progress',
+              'Resolved',
+              'Rejected'
+            ]
+            && request.resource.data.timestamp is string
+            && request.resource.data.timestamp.size() >= 10
+          )
+          ||
+          (
+            isReportOwnerById(reportId)
+            && isNonArchivedReportById(reportId)
+            && request.resource.data.reportId == reportId
+            && request.resource.data.changedByUid == request.auth.uid
+            && request.resource.data.changedByRole == 'citizen'
+            && request.resource.data.timestamp is string
+            && request.resource.data.timestamp.size() >= 10
+            && (
+              (
+                request.resource.data.toStatus == 'Submitted'
+                && (!('fromStatus' in request.resource.data) || request.resource.data.fromStatus == null)
+              )
+              ||
+              (
+                request.resource.data.toStatus == 'Withdrawn'
+                && request.resource.data.fromStatus in ['Submitted', 'Under Review']
+              )
+            )
+          )
+        );
+        allow update, delete: if false;
+      }
+    }
+
+    // 4. Immutable Municipal Audit Logs
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated()
+                    && request.resource.data.actorUid == request.auth.uid
+                    && request.resource.data.targetId is string
+                    && request.resource.data.targetId.size() > 0
+                    && request.resource.data.action is string
+                    && request.resource.data.action.size() > 0
+                    && request.resource.data.timestamp is string
+                    && request.resource.data.timestamp.size() >= 10
+                    && (
+                      (
+                        isAdmin()
+                        && request.resource.data.actorRole == 'admin'
+                        && (
+                          request.resource.data.action != 'report_archived'
+                          || isValidArchiveAuditLog()
+                        )
+                      )
+                      ||
+                      (
+                        request.resource.data.actorRole == 'citizen'
+                        && request.resource.data.action in ['report_created', 'report_withdrawn']
+                        && request.resource.data.targetType == 'civic_report'
+                        && request.resource.data.targetId.size() <= 128
+                        && request.resource.data.targetId.matches('^[a-zA-Z0-9_-]+$')
+                        && isReportOwnerById(request.resource.data.targetId)
+                        && isNonArchivedReportById(request.resource.data.targetId)
+                        && request.resource.data.keys().hasOnly([
+                          'action',
+                          'targetType',
+                          'targetId',
+                          'actorUid',
+                          'actorRole',
+                          'summary',
+                          'timestamp'
+                        ])
+                        && request.resource.data.summary is string
+                        && request.resource.data.summary.size() > 0
+                        && request.resource.data.summary.size() <= 500
+                      )
+                    );
+      allow update, delete: if false;
+    }
+
+    // Default deny for all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

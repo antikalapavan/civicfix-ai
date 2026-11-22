@@ -1,0 +1,56 @@
+{
+  "name": "react-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "start": "node dist/server.mjs",
+    "setup:ml": "bash scripts/setup-python.sh",
+    "ml:start": ".venv/bin/python3 ml/app.py 2>/dev/null || python3 ml/app.py",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server.mjs",
+    "preview": "vite preview",
+    "clean": "rm -rf dist server.js",
+    "lint": "tsc --noEmit",
+    "test": "tsx tests/civicKnowledge.test.ts && tsx tests/reportStorage.test.ts && tsx tests/mlGateway.test.ts && tsx tests/locationMap.test.ts && tsx tests/imageProcessing.test.ts && tsx tests/httpBridge.test.ts && tsx tests/adminAuthAndStats.test.ts && tsx tests/civicChatbotMultiTurn.test.ts && tsx tests/reportWithdrawal.test.ts && tsx tests/authAndDefaults.test.ts && tsx tests/civicImageIntelligence.test.ts && tsx tests/xaiImageAnalysis.test.ts && tsx tests/reportLocations.test.ts && tsx tests/securityRules.test.ts",
+    "test:rules:static": "tsx tests/securityRules.test.ts",
+    "test:rules:emulator:run": "tsx tests/firebaseEmulatorSecurityRules.test.ts",
+    "test:rules:emulator": "firebase emulators:exec --only firestore,storage --project demo-civifix-rules-test \"npm run test:rules:emulator:run\""
+  },
+  "dependencies": {
+    "@google/genai": "^3.3.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/cors": "^2.8.19",
+    "@types/leaflet": "^1.9.22",
+    "@vitejs/plugin-react": "^6.1.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.7.4",
+    "firebase": "^13.1.0",
+    "firebase-admin": "^14.5.1",
+    "helmet": "^8.3.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "react-leaflet": "^5.0.0",
+    "vite": "^8.3.0"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.28.2",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.21.0",
+    "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "esbuild": true
+  }
+}

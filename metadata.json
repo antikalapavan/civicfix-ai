@@ -1,0 +1,8 @@
+{
+  "name": "CiviFix AI — Civic Intelligence & Awareness",
+  "description": "Clean, modern Android mobile application for citizen civic issue reporting, resolution tracking, waste segregation, and civic intelligence guidance.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,802 @@
+MASTER PROMPT v2: CIVIFIX AI
+Inspect, Correct, Simplify, Secure and Verify an Existing Civic Issue Platform
+
+You are acting simultaneously as:
+
+Senior full-stack developer (React, TypeScript, Node.js, Express).
+Software architect.
+Firebase specialist (Authentication, Firestore, Storage, Security Rules).
+Security reviewer.
+UI/UX designer.
+AI integration engineer (Gemini API, OpenCV).
+QA engineer.
+
+Your job is to inspect, correct, simplify and improve an existing project called CiviFix AI. This is not a new build. Do not rebuild from scratch. Understand the current code first, then fix problems systematically.
+
+Core principle: correctness, security, honesty and simplicity come before features and decoration. Do not add features that are not listed here.
+
+0. HOW YOU MUST WORK (READ FIRST)
+0.1 Working protocol
+
+This work is large. You must work in phases and stop at the end of each phase to report and wait for my approval before starting the next one.
+
+Do only the phase I have authorised. Do not jump ahead.
+Before any major or destructive change, state:
+What is currently wrong.
+Which files are affected.
+What you intend to change.
+Whether any existing functionality will be removed.
+How you will test the result.
+After every phase, produce a Phase Report in exactly this format:
+Files modified / created / deleted (full paths).
+Problems fixed (each tied to a numbered problem from the Phase 1 diagnosis).
+What was tested and how (commands run, screens checked, inputs used).
+Test results (pass / fail, with real output, not assumptions).
+Remaining problems and risks.
+Manual steps required from me (for example Firebase deployments, console settings, environment variables).
+If you cannot verify something, write "NOT VERIFIED" and explain why. Never write "fixed", "working" or "tested" for something you did not actually run.
+If any requirement is ambiguous, ask me one concise question and continue with the unambiguous parts. Do not guess on security-related decisions.
+If your context window or output limit is being reached, stop at a clean boundary (a finished file or finished step), summarise the state, and tell me exactly what to say to continue. Never leave a file half-written or truncated.
+0.2 Honesty rules (non-negotiable)
+Do not fabricate data, AI results, test results, screenshots, statistics or municipal confirmations.
+Do not claim a Firebase rules change is live. Local rule files only take effect after deployment; tell me the exact deploy step.
+Do not claim Gemini or Google Maps work until a real request has succeeded. If credentials are unavailable in your environment, say so.
+Do not hide errors by returning empty lists, default values or fake success.
+Do not "fix" permission errors by loosening security rules.
+0.3 Change discipline
+Do not change the technology stack without a strong technical reason that you explain first.
+Do not modify unrelated files.
+Do not rewrite working code without a reason.
+Do not delete anything you do not understand. Identify dependencies first.
+Do not permanently delete any citizen record as part of ordinary cleanup.
+Keep existing tests; update them only when behaviour legitimately changes.
+Prefer small, reviewable changes. List every file you touch.
+1. PROJECT PURPOSE
+
+CiviFix AI is an AI-assisted civic issue reporting and management platform that connects citizens and municipal administrators.
+
+The essential workflow the whole product exists to support:
+
+Citizen logs in → reports a civic issue → AI analyses the evidence → report is stored → administrator reviews it → administrator takes action → citizen tracks progress → issue is verified as resolved.
+
+Two clearly separated experiences, one shared backend and database:
+
+Citizen application
+Administrator dashboard
+
+Anything that does not serve this workflow is a candidate for removal (see Section 10).
+
+2. EXISTING TECHNOLOGY STACK (DO NOT CHANGE WITHOUT JUSTIFICATION)
+Layer	Technology
+Frontend	React, TypeScript, Vite, Tailwind CSS
+Backend	Node.js, Express, TypeScript
+Database	Firebase Firestore
+Authentication	Firebase Authentication
+Image storage	Firebase Storage
+Maps	Google Maps Platform
+AI	Gemini API
+Image processing	Python, Flask, OpenCV
+Text classification	TF-IDF + Logistic Regression
+
+Known project paths (not exhaustive; inspect the real repository and do not assume):
+
+/server.ts
+/src/App.tsx
+/src/types/civic.ts
+/src/services/reportStorage.ts
+/src/services/adminService.ts
+/src/services/civicImageService.ts
+/src/server/civicVisionHelpers.ts
+/src/server/groundedCleanup.ts
+/src/components/screens/ReportIssueScreen.tsx
+/src/components/screens/MyReportsScreen.tsx
+/src/components/admin/AdminReportDetailsModal.tsx
+/src/components/BeforeAfterPreviewCard.tsx
+/ml/app.py
+/ml/image_processor.py
+/firestore.rules
+/storage.rules
+3. PHASE 1: INSPECTION (DO THIS FIRST; NO LARGE CODE CHANGES YET)
+
+Inspect the complete repository and produce a written diagnosis. In this phase you may run read-only commands (list files, read files, run the build, run linters/tests) but you must not perform large-scale modifications.
+
+3.1 What to inspect
+Repository structure: list every directory and summarise the purpose of each.
+package.json, tsconfig, Vite config, Tailwind config, environment variable usage (.env*, import.meta.env, process.env).
+How authentication works today (client SDK usage, session handling, protected routes, how roles are determined).
+How admin access is determined today (custom claims, a Firestore role field, hardcoded email, prefilled credentials, etc.).
+How reports are created, validated, stored and retrieved (client direct-to-Firestore vs. via Express endpoints).
+How administrators update reports and whether status changes are validated or audited.
+The Gemini integration: which model, which endpoint, where the API key lives, prompt content, response parsing, error handling.
+The before-and-after pipeline: which service creates the "after" image, whether the original is preserved, how the OpenCV inpainting is invoked.
+Google Maps integration: where the key is loaded, why the configuration warning appears, how markers are created.
+firestore.rules and storage.rules: read every rule, check every isAdmin()-style helper for consistency.
+Duplicate, unused or dead components, files and dependencies.
+Test data, placeholder content, random strings, debug output, fake statistics, hardcoded numbers, and misleading "municipal integration" messages.
+Existing tests and their status.
+Secrets: search for API keys, service account JSON, passwords or credentials committed to the repository or exposed in frontend bundles.
+Responsive and formatting problems on each screen.
+3.2 Known problems reported from screenshots (verify each in the code)
+Permission warnings appear across several admin sections (likely rules, auth state, or inconsistent admin checks).
+The admin map shows a Google Maps API configuration warning.
+The admin overview shows 7 total reports but only 6 mapped. Find out why the seventh is missing (missing coordinates, invalid values, wrong field name, or a query/filter issue).
+Test data, random descriptions and a "Firestore verification" test record are visible.
+The admin dashboard is overcomplicated and contains modules unrelated to complaint management.
+Admin login screen may contain prefilled credentials.
+Interface formatting is inconsistent (headings, buttons, cards, spacing, modals, tables).
+Statements implying municipal-system integration may be false.
+The before-and-after feature may not use the exact original photograph or may produce an unrelated image.
+3.3 Required Phase 1 deliverables
+
+Produce these as clearly separated sections in your reply:
+
+A. Architecture summary. How the pieces fit together, in plain language, with a simple text diagram of data flow for: (1) citizen login, (2) report submission, (3) AI analysis, (4) admin status update, (5) before/after preview.
+
+B. Problem register. A table with these columns:
+
+ID	Area	Problem	Evidence (file + line/function)	Severity (Critical/High/Medium/Low)	Proposed fix	Phase that will fix it
+
+Severity guidance: Critical = security hole, data exposure, or core workflow broken. High = a major feature is broken or dishonest. Medium = incorrect or inconsistent behaviour. Low = cosmetic.
+
+C. Security findings. Separately list anything involving exposed secrets, weak or inconsistent rules, client-trusted roles, missing server-side checks, or publicly readable/writable data.
+
+D. Keep / Simplify / Remove table. Every existing module and screen with a decision and a reason, plus its dependencies. Do not mark anything for removal without listing what depends on it.
+
+E. Data model audit. Compare the current Firestore structure with the target structure in Section 6. List needed migrations.
+
+F. Correction plan. An ordered plan mapped onto Phases 2 to 7.
+
+G. Questions for me. Only the questions you genuinely cannot answer from the code.
+
+Stop after Phase 1 and wait for approval.
+
+4. TARGET DATA MODEL (REFERENCE FOR ALL PHASES)
+
+Adapt to the existing structure where it is already sound. Do not rename fields or collections unless there is a strong reason; if you must migrate, write a careful, reversible migration and ask me first. All timestamps should use Firestore Timestamp (server timestamps where possible).
+
+4.1 users/{uid}
+Field	Type	Notes
+uid	string	Equals document ID
+displayName	string
+email	string
+photoURL	string or null
+authProvider	"google" or "password"
+createdAt	timestamp	Set once
+lastLoginAt	timestamp	Updated on login
+
+Roles are never stored in a field the user can write. Administrator status comes from a Firebase custom claim (admin: true) set only by a trusted server-side script or the Admin SDK, optionally backed by an admins/{uid} document that clients cannot write. Document exactly how I should grant admin access to a specific account (a one-off script, with instructions).
+
+4.2 reports/{reportId}
+Field	Type	Notes
+reportId	string	Human-readable tracking number, unique (for example CF-2026-000123). Generate in a way that cannot collide (transaction or counter or collision-checked ID)
+citizenUid	string	Owner
+citizenName	string	Snapshot at submission
+description	string	Citizen's text
+citizenCategory	enum	Final category confirmed by the citizen
+aiSuggestedCategory	enum or null	Original AI suggestion, never overwritten
+categoryOverriddenByCitizen	boolean	True if citizen changed the AI suggestion
+imageUrl	string	Original photo (Storage download URL)
+imagePath	string	Storage path (used for rules and cleanup)
+location	map or null	{ lat, lng, address?, source: "map-pin" or "gps" or "manual-address" }. Null if unknown. Never invented
+status	enum	See Section 5.4
+withdrawn	boolean	Withdrawal is a flag plus history, not deletion
+withdrawalReason	string or null
+aiAnalysis	map or null	See Section 5.5 for structure
+aiVerificationStatus	enum	verified, unclear, unrelated, unavailable, not_run
+manualReviewRequested	boolean	True when citizen overrode or AI was unavailable
+citizenManualReviewNote	string or null	Citizen's explanation for override
+adminSeverity	enum or null	Official severity set by admin (low/medium/high)
+adminNotes	array of { text, adminUid, adminName, at }	Or a subcollection if volume warrants
+adminResponse	string or null	The citizen-visible remark
+resolution	map or null	{ summary, resolvedBy, resolvedAt, evidenceImageUrl?, evidencePath? }
+beforeAfterPreview	map or null	{ status, previewImageUrl?, generatedAt?, errorCode? }
+isTestData	boolean	For clearly labelled demo or test records (Section 13)
+createdAt / updatedAt	timestamp
+4.3 reports/{reportId}/statusHistory/{entryId}
+
+{ previousStatus, newStatus, actorUid, actorRole ("citizen" | "admin" | "system"), explanation, at }
+
+Append-only. Written in the same transaction or batch as the status change. Nobody may edit or delete entries through client rules.
+
+4.4 auditLogs/{logId} (admin-sensitive actions)
+
+{ action, targetReportId, actorUid, actorRole, details, at } for: admin deletions or archival, rejection, resolution, role changes, and any other controlled administrative action. Append-only; readable by admins only.
+
+5. CITIZEN APPLICATION
+
+The citizen app must be simple, familiar, responsive and mobile-first.
+
+5.1 Citizen authentication
+
+Google Sign-In (Firebase Auth Google provider)
+
+Register and log in with a Google account.
+Handle success, popup closed or cancelled, popup blocked (fall back to redirect if appropriate), network failure and account-exists-with-different-credential errors.
+On first sign-in, create users/{uid}; on later sign-ins, update lastLoginAt and profile fields without creating duplicates. Use the UID as the document ID so duplicates are impossible.
+
+Email and password
+
+Registration page and login page.
+Fields: name (registration), email, password (and confirm password on registration).
+Password visibility toggle.
+Validation: valid email format, minimum 8 characters, matching confirmation, clear inline messages.
+Password reset by email, with a neutral message that does not reveal whether an account exists.
+Clear, human error messages mapped from Firebase error codes (for example auth/wrong-password, auth/user-not-found, auth/email-already-in-use, auth/too-many-requests, auth/network-request-failed).
+Logout.
+
+Session and security
+
+Persisted sessions with the Firebase SDK's auth state listener; no flash of protected content before auth state resolves (show a loading state).
+Route guards for all citizen pages.
+Ordinary registration can never create or imply admin privileges.
+No unnecessary authentication methods (no phone, Facebook, etc.).
+
+The login screen should be clean and professional.
+
+5.2 Citizen navigation and dashboard
+
+Main sections only:
+
+Dashboard / Home
+Report a Civic Issue
+My Reports
+Profile
+Logout
+
+The dashboard shows only:
+
+Total reports submitted by this citizen.
+Awaiting review (Submitted + Under Review).
+Being addressed (Accepted + In Progress).
+Resolved.
+A short list of recent reports (for example the latest 5).
+
+All numbers come from the citizen's real Firestore records. No hardcoded or fabricated values. Show loading, empty ("You haven't reported anything yet") and error states.
+
+Define clearly how withdrawn and rejected reports are counted so the numbers add up to the total. Show the definition in code comments.
+
+5.3 Report a Civic Issue
+Flow
+Upload or capture a photo.
+Enter a description.
+Run Analyze with Civic AI (single integrated action).
+Review the AI result; confirm or change the category.
+Provide location.
+Submit.
+Categories (use one shared enum across frontend, backend, rules and ML)
+garbage (garbage accumulation or overflowing bins)
+pothole (potholes and damaged roads)
+drainage (blocked drains and sewage overflow)
+stagnant_water
+water_leakage
+streetlight (broken streetlights)
+footpath (damaged footpaths)
+fallen_tree
+public_infrastructure (damaged public infrastructure)
+other (other civic issues requiring manual review)
+
+Display friendly labels; store enum values.
+
+Image upload
+Accepted types: JPEG, PNG, WebP (decide on HEIC handling and state it). Validate by MIME type and file signature where practical, not just extension.
+Size limit (suggest 10 MB; enforce on client, and in Storage rules).
+Preview before submission; allow replacing the image.
+On mobile, allow camera capture.
+Upload to a path that includes the owner UID (for example reports/{uid}/{reportId}/original.jpg) so Storage rules can enforce ownership.
+Handle failure, cancellation and retry. Show progress.
+Save the real download URL and the storage path. If the Firestore write fails after upload, clean up or mark the orphaned file so no broken or orphaned references persist. If upload fails, do not create the report.
+Description
+Required, trimmed, meaningful (suggest minimum 15 characters; maximum 1000). No other restrictions on what the citizen may explain.
+Helpful placeholder example, for instance: "Large pothole on the left lane near the bus stop, about 30 cm wide, filled with water after rain."
+Prevent whitespace-only or empty submissions.
+Location
+Options: pin on Google Map, use current location (GPS), or type an address (geocoded if possible).
+Handle denied or unavailable geolocation gracefully and offer the map pin option instead.
+Validate coordinates: lat between -90 and 90, lng between -180 and 180, numbers not strings, not 0,0 placeholder values.
+If the citizen cannot provide coordinates, allow submission with an address-only or no-coordinate location, clearly flagged for admins. Never invent or default a location.
+Submission
+Validate everything first.
+Disable the submit button and show progress while submitting; guard against double-submits (disabled state plus an in-flight flag plus an idempotency key / pre-generated report ID so a repeated request cannot create two reports).
+Upload image, then create report with citizenUid = authenticated user, server timestamp, category fields, location, initial status submitted, initial status-history entry.
+Show the confirmation (with the tracking ID) only after the Firestore write is confirmed.
+A failed submission must preserve the citizen's input and show a clear retry message. It must never appear in My Reports as submitted.
+5.4 Complaint status system
+
+Statuses (simplify only if the existing implementation genuinely needs fewer, and then keep all essential workflow information):
+
+submitted → under_review → accepted → in_progress → resolved and rejected. Withdrawal is represented by withdrawn: true together with a history entry (status may stay as-is or become withdrawn; choose one approach, document it, and apply it consistently).
+
+Valid transitions (enforce on the server and, where possible, in Firestore rules):
+
+From	To (allowed)	Who
+submitted	under_review	Admin
+submitted	rejected	Admin (reason required)
+under_review	accepted, rejected	Admin (rejection reason required)
+under_review	under_review with "clarification requested"	Admin (see below)
+accepted	in_progress	Admin
+in_progress	resolved	Admin (resolution summary required; evidence photo strongly encouraged)
+submitted, under_review, accepted	withdrawn	Citizen (owner only)
+in_progress	withdrawn	Decide and document (default: not allowed)
+resolved, rejected	withdrawn	Not allowed
+
+Clarification requests: an admin may request clarification before accepting. Implement it as a status-history entry plus a clarificationRequest message visible to the citizen (and a way for the citizen to reply with a text note), without adding a new top-level status unless the code already has one.
+
+Every status change records: previous status, new status, timestamp, actor (admin UID or "system"), and explanation. Invalid transitions are rejected with a clear error. Citizens and admins must always see the same status for the same report (single source of truth: the status field).
+
+5.5 AI civic image and report analysis
+
+AI analysis is a core feature and it must be honest.
+
+One integrated action
+
+Provide a single button: Analyze with Civic AI. It analyses the uploaded image and the description together. Remove separate buttons such as "Suggest Category with AI", "Check with Civic AI" and "Verify Image with AI".
+
+Inputs
+
+Only the uploaded photograph and the citizen's description. Do not send Google Maps or location data to Gemini for category or severity decisions.
+
+Required structured output
+
+Make Gemini return strict JSON matching a schema (use Gemini structured output / responseSchema with responseMimeType: "application/json" if the existing model supports it). Validate the parsed JSON on the server with a schema validator (for example Zod). Reject or retry once if invalid.
+
+json
+{
+  "suggestedCategory": "pothole",
+  "imageRelevance": "civic | unclear | unrelated",
+  "visibleObservations": ["only things directly visible in the image"],
+  "inferences": ["things the AI is assuming; each clearly an assumption"],
+  "needsHumanVerification": ["things that cannot be established from the photo"],
+  "suggestedSeverity": "low | medium | high",
+  "severityReasoning": "short explanation grounded in visible evidence",
+  "explanation": "plain-language summary",
+  "municipalRecommendations": ["what a department could inspect or do"],
+  "citizenGuidance": ["safe actions, what to avoid, how to document"],
+  "limitations": ["e.g. photo is dark, scale unknown"],
+  "descriptionMatchesImage": true
+}
+
+The server (not the model) derives the final fields shown to users: aiVerificationStatus and confidenceLabel.
+
+Verification status (server-derived)
+verified: image is civic-relevant and the description is consistent with it.
+unclear: image quality or content is insufficient to judge (blurry, dark, too distant, ambiguous).
+unrelated: image does not appear to show a civic problem.
+unavailable: the analysis service failed (error, timeout, 503, malformed output). A service failure must never be presented as "unrelated".
+Confidence labels: High / Medium / Low
+
+No percentages. Derive the label from explicit, documented rules in code, not just from a number Gemini produces. Example rule set (adapt and document in code comments):
+
+High: relevance = civic and description matches image and at least 2 specific visible observations and the suggested category is consistent with the (optional) ML text classifier's prediction.
+Medium: relevance = civic but only one of the above is weak (for example description is vague, or classifier disagrees).
+Low: relevance = unclear, or multiple signals conflict.
+
+If the existing TF-IDF classifier is used as a cross-check, treat it as one signal, and show disagreement to administrators rather than hiding it.
+
+Category selection
+AI suggests; the citizen decides.
+Pre-select nothing silently overwriting the citizen's own choice. If the citizen already chose a category, do not change it. Show "AI suggests X. Use this suggestion / Keep my choice."
+Store aiSuggestedCategory (original, immutable) and citizenCategory (confirmed) separately, plus categoryOverriddenByCitizen.
+Severity
+
+AI may suggest low, medium or high and must explain why using visible evidence only. Do not invent injuries, population affected, contamination or risks that cannot be established from the image. The administrator's adminSeverity is the official value.
+
+Explanation style
+
+Plain language. Keep separate: Visible in the photo, AI assumptions, Needs human verification. Example: visible stagnant water does not prove harmful bacteria or mosquito breeding; say it "may" attract mosquitoes and needs inspection.
+
+Recommendations
+Suggested municipal action (inspection, repair type, extra verification).
+Citizen guidance (safe actions, what to avoid, how to document).
+Always state: "These are suggestions and do not confirm any official municipal action."
+Unrelated image behaviour
+
+Show a clear message: the image does not appear to show a civic problem; ask for a relevant photo. Offer a controlled manual-review override: the citizen writes why the photo is relevant (required, minimum length), the report is submitted with aiVerificationStatus = "unrelated", manualReviewRequested = true and the explanation stored. It is never shown or stored as AI-verified.
+
+Unclear image behaviour
+
+Offer: retake or upload a better photo, retry analysis, or submit for manual review (flagged unclear).
+
+Service unavailable behaviour
+
+Show an honest message ("Civic AI is temporarily unavailable"), offer retry and offer submission for manual review (flagged unavailable). Do not fabricate an analysis. Do not show cached results as fresh; if you ever show a previous result, label it with the time it was produced.
+
+Reliability requirements
+Server-side only: the Gemini key must never reach the browser. The frontend calls an authenticated Express endpoint (for example POST /api/ai/analyze).
+Verify the caller's Firebase ID token on that endpoint; rate-limit per user.
+Timeout (for example 30 s), retry with exponential backoff for 429, 500 and 503 (maximum 2 retries), safe handling of malformed JSON, empty responses, safety-blocked responses and network errors.
+Image size and type limits before sending to Gemini (resize or compress server-side if needed).
+Log technical detail on the server; return only a safe error code and friendly message to the client.
+Do not claim Gemini works unless a live request has succeeded. Report the result of at least one real call, or state that you could not run one.
+5.6 My Reports and tracking
+
+Each report shows: report ID, category, short description, submission date, current status, uploaded photo, location (when available), administrator response or remarks, clarification requests, and status timeline (from statusHistory).
+
+Real-time or refresh-on-focus updates so admin changes appear.
+Filters by status; sort newest first.
+Loading, empty and error states.
+Citizens may only read their own reports (enforced by rules, not just by the query).
+Withdrawal vs deletion
+Clear Withdraw report action with a confirmation dialog and an optional/required reason.
+Allowed only for eligible statuses (Section 5.4). Show why withdrawal is unavailable otherwise.
+Implement as an update (withdrawn: true, reason, history entry), not a delete. Preserve the audit record.
+Only the owner can withdraw; enforce in rules and server.
+Citizens have no permanent-delete capability.
+Administrators may have a controlled archive/delete for inappropriate or test records: requires admin claim, a reason, an audit-log entry, and preferably soft-delete first (archived: true). No unrestricted permanent deletion.
+5.7 Before-and-after improvement preview
+
+Purpose: an illustrative preview of how the issue might look after improvement.
+
+Before image: the exact original uploaded photograph, byte-for-byte unchanged. Never substitute a different image. Never overwrite the original in Storage.
+
+After image:
+
+Generated from the exact original photo.
+Modify only the defect region; preserve everything else (buildings, road, people, vehicles, trees, signage, lighting).
+Use the existing grounded OpenCV inpainting pipeline (/ml/image_processor.py, /src/server/groundedCleanup.ts) where appropriate. Do not silently depend on a paid image-generation service. Do not create a different scene.
+Store the preview as a separate Storage object from the original.
+Always display the label: "AI-generated improvement preview. Illustrative only."
+Keep it clearly separate from official completion evidence. It never counts as proof of repair, and never triggers or justifies a Resolved status.
+
+Failure handling: if the preview cannot be generated (Python service down, no defect region found, timeout), show the original photo, a short honest explanation and a retry option. Never display a fabricated "after" image or a placeholder pretending to be one.
+
+Verification: compare hashes of the original before and after generation to prove it is unchanged; compute a simple diff mask to confirm changes are confined to the defect region.
+
+6. ADMINISTRATOR AUTHENTICATION AND AUTHORIZATION
+Separate admin entry path (for example /admin/login); ordinary citizen registration must not lead to admin access.
+Firebase Authentication plus a trusted role source: custom claim admin: true (preferred). Frontend role values are never trusted for security, only for UI display.
+Server middleware (requireAdmin) verifies the ID token with the Admin SDK and checks the claim on every admin endpoint.
+firestore.rules and storage.rules use one consistent helper, for example:
+  function isSignedIn() { return request.auth != null; }
+  function isAdmin() { return isSignedIn() && request.auth.token.admin == true; }
+  function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+
+Use the same definition everywhere. If the current code uses different admin checks in different places, that is a bug to fix.
+
+Remove prefilled credentials and any hint of valid admin credentials from the login page.
+Proper logout; clear client state on logout.
+A citizen account that visits admin URLs sees an "access denied" page and no data loads.
+Provide a short written procedure (and script if needed) to grant or revoke the admin claim for a chosen UID, and note that a user must refresh their ID token after the claim changes.
+Do not expose administrator-only data (other citizens' contact info, admin notes, audit logs) to citizens in rules or API responses.
+7. ADMINISTRATOR DASHBOARD
+
+The current dashboard is too complicated and has permission problems. Simplify it. Its purpose is complaint management, not analytics.
+
+7.1 Navigation (only these)
+Overview
+Manage Reports
+Map / Report Locations
+Citizen Management (only if genuinely required by an existing workflow; otherwise omit)
+Logout
+
+Remove unrelated modules (see Section 10) after checking dependencies.
+
+7.2 Overview
+
+Simple summary cards computed from real Firestore data:
+
+Total reports
+Submitted
+Under Review
+Accepted
+In Progress
+Resolved
+Rejected
+(Withdrawn shown if used, so that the numbers reconcile with the total)
+
+Requirements:
+
+Counts must equal the number of rows in Manage Reports for the same filter. Prefer a single data source (one query, counts derived in one place) so totals cannot disagree.
+If a query fails, show an error state with a retry button. Never show fabricated or zero statistics as if they were real.
+No decorative charts or extra graphs.
+7.3 Manage Reports (most important screen)
+
+A clean table (desktop) / card list (mobile). Columns: Report ID, Citizen (name or limited identifier), Category, Description (truncated with full text in details), Submitted date, Location (address or "No location"), AI verification status, Suggested severity, Status, Actions.
+
+Filters: All, Submitted, Under Review, Accepted, In Progress, Resolved, Rejected, Withdrawn.
+Search by report ID, category, or citizen identifier.
+Sort by date (newest default); pagination or incremental loading for large lists.
+Responsive: no cut-off Action column, no horizontal page overflow; on small screens use stacked cards.
+Possible-related-reports indicator (Section 9).
+7.4 Report details (modal or page)
+
+Citizen information: UID/identifier and name; contact details only where authorized and operationally necessary.
+
+Report information: report ID, original photo (with zoom), description, category, location (mini-map and address), submission date.
+
+AI analysis: original AI category suggestion, citizen-confirmed category, visible observations, AI assumptions, verification status, confidence label, suggested severity with reasoning, municipal recommendations, citizen guidance, limitations. If analysis was not run or unavailable, say so plainly. Flag manual-review overrides and show the citizen's explanation.
+
+Management: current status, status history timeline, admin notes, citizen-visible response, official severity (admin-set), resolution details and resolution photo.
+
+Actions (all persisted to Firestore through a validated path):
+
+Move to Under Review.
+Accept.
+Reject (reason required; shown to the citizen).
+Request clarification (message required).
+Mark In Progress.
+Add administrative note.
+Set official severity.
+Mark Resolved: requires a resolution summary; resolution evidence photo upload (Storage path restricted to admins) strongly encouraged; if no evidence is supplied the admin must explicitly confirm "resolved without photo evidence" and that is recorded.
+
+Rules for all actions:
+
+Show success only after the database write succeeds.
+On failure: show a useful error, keep the previous UI state, and do not lose typed notes.
+Use transactions or batched writes so status, statusHistory, updatedAt and audit entries are consistent.
+Disable action buttons while saving to prevent double submissions.
+The citizen sees the update in My Reports.
+7.5 Fix permission and Firestore errors (root-cause analysis required)
+
+Investigate and document the real cause of the permission warnings. Check in this order:
+
+Is the admin signed in (auth state resolved before queries run)?
+Does the ID token actually carry the admin claim (token refreshed after claim change)?
+Is isAdmin() defined identically in firestore.rules and storage.rules?
+Do the queries match what the rules allow (rules are not filters: a query must be constrained so every possible result is allowed)?
+Missing composite indexes (these produce a different error: say which)?
+Missing optional fields causing rule evaluation errors (resource.data.x on a missing field).
+Do status-update rules validate allowed transitions and allowed fields (admins may change status/notes/resolution; citizens may not)?
+Are server endpoints verifying the token and the claim?
+
+Requirements:
+
+Citizens can read and create only their own reports; they can update only a tightly limited set of fields (for example withdrawn, withdrawalReason, clarification reply), never status, adminNotes, adminSeverity, resolution, citizenUid or AI fields once created.
+On create, rules must verify citizenUid == request.auth.uid, status == 'submitted', required fields present and of the right types, and that the client cannot pre-populate admin fields.
+Admins can read all reports and update only admin-controlled fields.
+statusHistory and auditLogs are append-only.
+Never use allow read, write: if true or time-based open rules.
+Display separate UI states for: loading, empty, permission denied, and general failure. Never replace a permission error with an empty list.
+Provide the final firestore.rules, storage.rules, and firestore.indexes.json, and list the exact deploy commands (for example firebase deploy --only firestore:rules,firestore:indexes,storage). State clearly that the fix is not live until I deploy them.
+If feasible, write rules unit tests using the Firebase Emulator (@firebase/rules-unit-testing) covering: citizen reads own report, citizen cannot read another's, citizen cannot set admin fields, citizen cannot self-promote, admin can update status, unauthenticated access denied.
+8. ADMINISTRATOR MAP
+Use the existing Google Maps Platform integration; fix the configuration warning (diagnose: missing key, wrong env variable name, key restrictions blocking the domain, API not enabled, billing not enabled, loading=async / library loading issues).
+Load the map only when a valid key is present; otherwise show a clear configuration message rather than a broken map.
+Markers only from genuine, validated coordinates. Clicking a marker opens a compact report summary with a link to full details. Consider marker clustering only if performance requires it.
+A visible panel listing "Reports without a mappable location" with their IDs and a link to each report. Never silently omit them; never fabricate a position.
+Investigate and explain the 7 vs 6 mismatch: find the seventh report, state exactly why it is not mapped, and fix the data handling (not the data by inventing coordinates).
+The map count and the Manage Reports count must reconcile: mapped + unmapped = total for the active filter.
+Do not expose secrets. The browser Maps key is public by nature, so protect it with HTTP-referrer restrictions and an API restriction (Maps JavaScript API, plus Places/Geocoding only if used). Give me the exact Google Cloud Console steps. Keep any server-side key (for example geocoding) separate and never in the frontend.
+9. POSSIBLE DUPLICATE AND RECURRING COMPLAINTS (DECISIONS ARE FINAL)
+Purpose and boundaries
+Administrator insight only.
+Never show duplicate warnings to citizens.
+Never auto-reject or auto-merge reports.
+Preserve every original report and its history.
+Admin decides whether it is a duplicate or a recurring issue.
+Include both unresolved and previously resolved reports as comparison candidates, so admins can distinguish "same open problem reported again" from "recurrence at a location previously fixed".
+No image similarity requirement. No complicated AI models. Use a transparent, explainable, unit-testable method.
+Factors
+Location: haversine distance between coordinates. Suggested default: related if within 50 m; "nearby" band up to 150 m with lower weight. Reports without coordinates are compared only by normalised address text and flagged as lower confidence.
+Category: same category = full match; related categories (for example drainage and stagnant_water) = partial match, defined in a small explicit table.
+Time: within 14 days of each other = strong; 15 to 60 days = moderate; older = weak. For previously resolved reports, measure time since resolvedAt to flag recurrence (for example reported again within 90 days of resolution).
+Description: simple, explainable text similarity (lowercase, strip punctuation and stop words, Jaccard similarity or token-overlap on keywords; TF-IDF cosine is acceptable if already available). No external AI call.
+Scoring and output
+Keep thresholds and weights in one config object with comments so they can be tuned.
+Return for each candidate: related report ID, category, location (and distance in metres), submission date, status, and a human-readable reason list (for example "42 m away", "same category", "reported 3 days apart", "descriptions share: pothole, bus stop").
+Label the relationship type: "Possibly the same open issue" (related report unresolved) or "Possible recurrence" (related report previously resolved).
+Run it on the server (or a pure shared function) when viewing report details and optionally when listing reports; avoid O(n²) work on every list render (use a bounding-box prefilter by coordinates, for example a geohash or lat/lng range query).
+Show a compact "Possible related reports" section in the admin report details, plus a small indicator in the list. Ignore withdrawn and archived reports unless there is a reason to include them (document the decision).
+Write unit tests (Section 16) for the matching function.
+10. REMOVE UNNECESSARY FEATURES AND CONTENT
+
+The core application is:
+
+Citizen: authentication, dashboard, issue reporting, AI analysis, My Reports, tracking, before/after preview, profile, logout. Admin: secure login, overview, report management, report details, status management, location map, possible-duplicate insights, logout.
+
+Review every module. Remove or simplify items that do not support this purpose, for example: quizzes, challenges, waste-awareness analytics, cleanup simulations, redundant AI buttons, duplicate dashboards, repeated statistics, decorative analytics, unused components, placeholder screens, test-only UI, unnecessary notifications and repeated informational messages.
+
+Process for each removal:
+
+List the module and its files.
+List everything that imports or routes to it.
+Confirm nothing in a core workflow depends on it.
+Remove it (or move it behind a clearly named, disabled flag if I ask to keep it).
+Rebuild and confirm nothing broke.
+
+Do not preserve a feature merely because it exists. Do not delete useful citizen-facing content without checking whether it is needed elsewhere. If unsure, ask me.
+
+11. TEXT, MESSAGES AND HONESTY IN THE UI
+
+Review every screen and remove: repeated descriptions, unnecessary explanations, placeholder text, random test strings, debug output, unnecessary success toasts, redundant warnings and technical messages shown to citizens.
+
+Remove or rewrite misleading claims. Do not show statements such as "Confirmed: Submitted to Municipal System" or "Synced with municipal records" unless a genuine, working municipal integration exists. Use honest wording:
+
+"Report submitted successfully."
+"Report received by CiviFix AI."
+"Awaiting administrator review."
+
+Technical details go to server and developer logs. Users see short, helpful, plain messages. Centralise user-facing strings (a single messages module or constants file) so tone and wording stay consistent.
+
+12. UI/UX AND FORMATTING
+
+Create or tighten a small design system and apply it everywhere:
+
+Typography scale (for example page title, section heading, body, caption) with fixed sizes and weights.
+Spacing scale (consistent page margins, card padding, gaps).
+One primary button style, one secondary, one destructive, one text/link; consistent heights and radii.
+Consistent input fields, labels, helper text and error text.
+One status badge component mapping each status to one colour and one label, used on every screen.
+One modal layout (header, scrollable body, sticky footer actions).
+One table style with a responsive card fallback.
+Consistent icon set and size; icons only where they add meaning.
+Accessible contrast (WCAG AA), visible focus states, labels on all inputs, alt text on images, keyboard-operable dialogs.
+Loading skeletons or spinners, helpful empty states, clear error states with retry.
+
+Avoid excessive gradients, shadows, cards, badges, animation, tiny text and crowded layouts.
+
+Responsive verification at roughly 360, 390, 768, 1024 and 1440 px widths. The citizen reporting flow must be comfortable on phones (large tap targets, camera capture). Fix horizontal overflow, cut-off tables, overlapping cards and truncated text. The admin dashboard must remain usable on tablets and phones.
+
+13. PRIVACY, SECURITY AND DATA INTEGRITY
+Security checklist (verify each; report pass/fail)
+No API keys, service account JSON, passwords or admin credentials in the repository, frontend bundle or logs. Scan for them. Check git history is not an issue (tell me if secrets were committed and must be rotated).
+.env files are in .gitignore; provide a .env.example listing every variable (with no real values) and where each is used (client vs server). Frontend variables must be prefixed correctly for Vite (VITE_) and contain only public values.
+Gemini key and Firebase Admin credentials are server-side only.
+Every Express endpoint: verifies the Firebase ID token, checks role or ownership, validates input (schema validation), limits payload size, and returns safe errors. Add CORS restricted to known origins, helmet, and rate limiting on AI and auth-adjacent endpoints.
+Storage rules: only authenticated owners can write to their own report path, with content-type and size limits; reads restricted to the owner and admins (or tokenised URLs, with the decision documented); resolution evidence writable by admins only.
+Firestore rules as described in Section 7.5.
+Input sanitisation and safe rendering (no dangerouslySetInnerHTML with user content).
+No permanent unrestricted deletion; admin deletion is controlled and audited.
+Personal information (email, phone, exact home location) is visible only to those who need it.
+Data accuracy
+
+The database is the source of truth. Ensure:
+
+No report is counted twice; totals equal the sum of statuses; category totals are correct.
+Reports belong to the correct user; admin updates are visible to citizens.
+Withdrawn and archived reports are represented consistently everywhere.
+AI results are attached to the correct report; image URLs point to the correct files.
+Timestamps display in one consistent format and timezone approach.
+Missing or null fields are handled safely (no crashes, no "undefined" text).
+Test and demo data
+Identify all test records (for example the "Firestore verification" record and random-description reports). Do not hard-delete citizen data. Mark them (isTestData: true) or archive them, and exclude them from production views and statistics. Give me a reviewed, reversible cleanup script that runs in dry-run mode by default and prints exactly what it would change before any write.
+If demo data is useful, create realistic records clearly labelled as demonstration data (for example a DEMO marker), seeded by an explicit script, never mixed with genuine reports.
+14. ERROR HANDLING
+
+Define a small, consistent error approach: typed error codes on the server, a mapping to friendly messages on the client, full detail only in server logs. Never show raw stack traces or backend internals to citizens.
+
+Cover and test each case:
+
+Scenario	Expected behaviour
+Google Sign-In cancelled / popup blocked / failed	Friendly message, can retry
+Email registration failure (exists, weak password, network)	Specific inline message
+Login failure	Neutral, clear message; no account enumeration
+Password reset failure	Clear message; neutral wording
+Image upload failure	Input preserved, retry offered
+Firestore write failure	No false success; input preserved
+Firestore permission denied	"You don't have permission" state, not an empty list
+AI unavailable / 503 / timeout	Honest message, retry and manual-review options
+Invalid or malformed AI response	Treated as unavailable; logged; no fake result
+Missing image / invalid location	Validation message at the field
+Google Maps configuration failure	Clear configuration message
+Status update failure	Previous state preserved; error shown
+Withdrawal failure	Report unchanged; error shown
+Resolution image upload failure	Resolve action not completed silently; error shown
+Python/OpenCV service down	Original image shown; honest message; retry
+
+Add a top-level React error boundary so a component crash never produces a blank white screen.
+
+15. IMPLEMENTATION PHASES
+
+Complete one phase at a time and stop for approval after each.
+
+Phase 1: Inspection and diagnosis (Section 3). No large code changes.
+
+Phase 2: Foundations and citizen authentication
+
+Environment variable cleanup, .env.example, secret scan results.
+Shared enums and types (categories, statuses, verification status) in one place.
+Citizen Google Sign-In, email/password register, login, reset, logout, route guards.
+Admin role mechanism (custom claim + server middleware + grant script).
+Test: all auth flows, citizen/admin separation.
+
+Phase 3: Reporting workflow
+
+Report creation, image upload, validation, double-submit protection, report ID generation.
+Integrated Analyze with Civic AI endpoint and UI, with the verification and confidence logic, override flows and all failure states.
+My Reports, tracking timeline, withdrawal.
+Test: submissions, upload failures, AI scenarios (see Section 16).
+
+Phase 4: Before-and-after preview
+
+Original image integrity, grounded inpainting integration, labelling, failure handling.
+Test: hash checks, region-confined changes, failure path.
+
+Phase 5: Admin dashboard and security rules
+
+Root-cause and fix permission errors; final Firestore and Storage rules plus indexes; emulator rules tests if feasible.
+Simplified admin navigation, overview, Manage Reports, report details, status workflow with history and audit logs, resolution evidence.
+Fix map integration and the 7 vs 6 discrepancy.
+Possible duplicate and recurring insights with unit tests.
+
+Phase 6: Cleanup and UI consistency
+
+Remove unnecessary modules (with dependency checks), placeholder and test content, misleading messages.
+Apply the design system and fix responsive issues.
+Test data handling script (dry-run first).
+
+Phase 7: Final verification
+
+Full build and test run, end-to-end workflow, real Firebase and real AI requests where possible, security checklist, final acceptance report.
+16. TESTING AND VERIFICATION
+
+Do not consider work done because the app compiles. Run real tests and report real output.
+
+16.1 Build and health checks
+tsc --noEmit for frontend and backend.
+Vite production build.
+Backend compile and start.
+Python service start and a health check request.
+Lint, and the existing test suite.
+16.2 Automated tests to add (keep them small and meaningful)
+Status transition validator (valid and invalid cases).
+Confidence and verification derivation logic.
+Duplicate-detection function: same location/category/time; same location different category; same category different location; similar description at different locations; match against a previously resolved report.
+Coordinate and input validators.
+Firestore and Storage rules tests with the emulator (Section 7.5), if the emulator is available.
+API endpoint tests for auth rejection (no token, citizen token on admin endpoint).
+16.3 Authentication
+
+Google registration and login; email registration and login; logout; password reset; citizen/admin separation; unauthorised access prevention.
+
+16.4 Citizen workflow
+
+Submit a report; upload a photo; description validation; run AI analysis; confirm or change category; submit an unclear image via manual review; submit an unrelated image via override with explanation; track a report; see admin updates; withdraw an eligible report; confirm an ineligible report cannot be withdrawn; confirm another user's report cannot be read or withdrawn.
+
+16.5 Admin workflow
+
+Admin login; view reports; open details; accept; reject with reason; request clarification; update status through the valid path; reject an invalid transition; add notes; set severity; mark resolved with evidence upload; confirm citizen-side updates; check permissions with a non-admin account.
+
+16.6 AI tests
+
+Use these images where available: a real pothole, garbage accumulation, a blocked drain, water leakage, a broken streetlight, an unrelated photo (for example a selfie or food), a blurry photo, an ambiguous photo, plus a simulated service outage (disable the key or mock a 503 in tests only, never in the product). For each, record: what Gemini returned, what the server derived (verification status and confidence), and whether the explanation matches what is actually visible. Do not claim perfect accuracy; report observed misses honestly.
+
+16.7 Before-and-after tests
+
+Original unchanged (hash match); correct photo used; defect region changed appropriately; unrelated surroundings preserved; label shown; failure handled honestly.
+
+16.8 UI tests
+
+Desktop, tablet and mobile layouts; forms; tables; modals; buttons; navigation; loading, empty and error states; no horizontal overflow; keyboard navigation of dialogs and forms.
+
+17. FINAL ACCEPTANCE CRITERIA
+
+The work is complete only when all of these are true and demonstrated:
+
+Citizen side
+Google Sign-In and email/password registration and login work; password reset works.
+A citizen can submit a complaint; the image uploads and renders; the report is stored with correct owner, category fields, location (or an honest absence), and initial status.
+Analyze with Civic AI returns a grounded, structured result, or an honest failure with manual-review options.
+The citizen decides the final category; the AI suggestion is stored separately.
+My Reports shows accurate status, remarks, clarification requests and timeline.
+Eligible reports can be withdrawn; ineligible ones cannot.
+Before-and-after preview works honestly, with the original untouched and the illustrative label.
+Admin side
+Admin login is secure; non-admins cannot access anything.
+The dashboard loads real data, and the totals match the report list and the map.
+Admins can accept, reject (with reason), request clarification, progress and resolve (with summary and evidence), add notes, and set official severity; every change is stored with history; citizens see it.
+Permission errors are fixed at the root cause without weakening the rules; the final rules and the deploy steps are provided.
+The map works with valid configuration, lists unmappable reports, and the 7 vs 6 discrepancy is explained and handled.
+Possible related reports (including previously resolved ones) are suggested to admins with clear reasons and no automatic decisions.
+Overall
+No unrelated modules, test data, placeholder text, repeated messages or misleading municipal claims remain in the production view.
+No exposed secrets; .env.example provided.
+Consistent design and working responsive layouts.
+No broken buttons, no fake data, no false success messages.
+Useful existing functionality is preserved.
+A final report lists every phase, every file changed, test evidence, all remaining known limitations, and all manual steps I must perform (Firebase deploys, console settings, key restrictions, admin grant, rotating any exposed secrets).
+18. DEFINITION OF DONE FOR EVERY CHANGE
+
+A change is done only when:
+
+It compiles with no new type errors.
+The relevant behaviour was exercised (automated test or documented manual test).
+Error and empty states were checked.
+No security rule or secret handling was weakened.
+The Phase Report lists it with honest test status.
+19. FINAL INSTRUCTION
+
+The goal is not to make CiviFix AI bigger. The goal is to make the existing application correct, reliable, simple, secure, functional and professional.
+
+Do not add features just to look advanced. Do not sacrifice correctness for appearance. Do not claim anything is fixed unless you tested it, and say "NOT VERIFIED" when you could not.
+
+Begin now with Phase 1 only: inspect the existing CiviFix AI repository and deliver the full diagnosis (architecture summary, problem register, security findings, keep/simplify/remove table, data model audit, correction plan, and questions). Do not sta

@@ -1,0 +1,73 @@
+name: Firebase Security Rules Emulator Tests
+
+on:
+  push:
+    paths:
+      - 'firestore.rules'
+      - 'storage.rules'
+      - 'firebase.json'
+      - 'tests/firebaseEmulatorSecurityRules.test.ts'
+      - 'tests/securityRules.test.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/firebase-emulator-rules.yml'
+  pull_request:
+    paths:
+      - 'firestore.rules'
+      - 'storage.rules'
+      - 'firebase.json'
+      - 'tests/firebaseEmulatorSecurityRules.test.ts'
+      - 'tests/securityRules.test.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/firebase-emulator-rules.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  emulator-rules-test:
+    name: Firestore & Storage Rules (Firebase Emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Java 21 (required by Firebase Emulator Suite)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install project dependencies from lockfile
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Verify Java, Node.js, and Firebase CLI on PATH
+        run: |
+          java -version
+          node -v
+          npm -v
+          firebase --version
+
+      - name: Run TypeScript type check
+        run: npm run lint
+
+      - name: Run static security rules test suite
+        run: npm run test:rules:static
+
+      - name: Run real Firestore & Storage Emulator security rules tests
+        env:
+          GCLOUD_PROJECT: demo-civifix-rules-test
+        run: npm run test:rules:emulator

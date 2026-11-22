@@ -1,0 +1,146 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Citizen profile persisted in Cloud Firestore",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "ward": { "type": "string" },
+        "city": { "type": "string" },
+        "preferredLanguage": { "type": "string" },
+        "avatarColor": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "notificationPreferences": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "fullName", "email"]
+    },
+    "CivicReport": {
+      "title": "CivicReport",
+      "description": "Citizen reported civic infrastructure or sanitation issue",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 5, "maxLength": 128 },
+        "trackingNumber": { "type": "string", "minLength": 5, "maxLength": 40 },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "citizenName": { "type": "string", "maxLength": 150 },
+        "citizenEmail": { "type": "string", "maxLength": 254 },
+        "category": {
+          "type": "string",
+          "enum": [
+            "Garbage accumulation",
+            "Overflowing dustbins",
+            "Potholes",
+            "Damaged roads",
+            "Drainage problems",
+            "Water leakage",
+            "Streetlight problems",
+            "Other civic issues",
+            "Garbage",
+            "Pothole",
+            "Water Leakage",
+            "Drainage",
+            "Broken Streetlight",
+            "Other"
+          ]
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["Low", "Medium", "Moderate", "High", "Hazard", "Minor"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Submitted", "Under Review", "Assigned", "In Progress", "Resolved", "Rejected", "Withdrawn"]
+        },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "photoUrl": { "type": "string", "maxLength": 500000 },
+        "resolutionDetails": { "type": "string", "maxLength": 2000 },
+        "resolutionPhotoUrl": { "type": "string", "maxLength": 500000 },
+        "adminRemarks": { "type": "string", "maxLength": 2000 },
+        "assignedDepartment": { "type": "string", "maxLength": 120 },
+        "assignedOfficer": { "type": "string", "maxLength": 120 },
+        "duplicateOf": { "type": "string", "maxLength": 128 },
+        "citizenNotes": { "type": "array", "items": { "type": "string", "maxLength": 500 } },
+        "submittedAt": { "type": "string", "minLength": 10, "maxLength": 40 },
+        "updatedAt": { "type": "string", "minLength": 10, "maxLength": 40 }
+      },
+      "required": ["id", "trackingNumber", "userId", "category", "severity", "status", "description", "submittedAt", "updatedAt"]
+    },
+    "StatusHistoryEntry": {
+      "title": "StatusHistoryEntry",
+      "description": "Immutable report lifecycle audit event",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "reportId": { "type": "string" },
+        "fromStatus": { "type": "string" },
+        "toStatus": { "type": "string" },
+        "changedByUid": { "type": "string" },
+        "changedByRole": { "type": "string", "enum": ["citizen", "admin"] },
+        "note": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "reportId", "toStatus", "changedByUid", "changedByRole", "timestamp"]
+    },
+    "AuditLogEntry": {
+      "title": "AuditLogEntry",
+      "description": "Immutable administrative and citizen lifecycle audit log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "action": { "type": "string" },
+        "targetType": { "type": "string" },
+        "targetId": { "type": "string" },
+        "actorUid": { "type": "string" },
+        "actorRole": { "type": "string", "enum": ["citizen", "admin"] },
+        "summary": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "action", "targetId", "actorUid", "actorRole", "timestamp"]
+    },
+    "AdminProfile": {
+      "title": "AdminProfile",
+      "description": "Authorized municipal administrator record",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "email": { "type": "string", "minLength": 5, "maxLength": 254 },
+        "displayName": { "type": "string", "maxLength": 150 },
+        "role": { "type": "string", "enum": ["superadmin", "ward_admin", "department_head", "staff"] },
+        "department": { "type": "string", "maxLength": 120 },
+        "ward": { "type": "string", "maxLength": 60 },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "minLength": 10, "maxLength": 40 },
+        "updatedAt": { "type": "string", "minLength": 10, "maxLength": 40 }
+      },
+      "required": ["uid", "email", "role"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Stores citizen profile preferences and contact settings"
+    },
+    "/civic_reports/{reportId}": {
+      "schema": "CivicReport",
+      "description": "Stores citizen reports and administrative resolution status"
+    },
+    "/civic_reports/{reportId}/statusHistory/{historyId}": {
+      "schema": "StatusHistoryEntry",
+      "description": "Immutable report status transition audit trail"
+    },
+    "/auditLogs/{logId}": {
+      "schema": "AuditLogEntry",
+      "description": "Immutable operational audit logs"
+    },
+    "/admins/{adminId}": {
+      "schema": "AdminProfile",
+      "description": "Stores authorized municipal administrative officers"
+    }
+  }
+}

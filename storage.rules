@@ -1,0 +1,71 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Strict Zero-Trust Admin Verification (aligned with firestore.rules):
+    // 1. If /admins/{uid} exists with active == false, ALWAYS deny (overrides custom claims).
+    // 2. If /admins/{uid} exists with active == true, grant admin access.
+    // 3. If /admins/{uid} does NOT exist, grant admin access only via verified custom claim
+    //    (admin == true) and not explicitly deactivated (active absent or active == true).
+    function isAdmin() {
+      return isAuthenticated() && (
+        firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid))
+          ? (
+              'active' in firestore.get(/databases/(default)/documents/admins/$(request.auth.uid)).data
+              && firestore.get(/databases/(default)/documents/admins/$(request.auth.uid)).data.active == true
+            )
+          : (
+              'admin' in request.auth.token
+              && request.auth.token.admin == true
+              && (!('active' in request.auth.token) || request.auth.token.active == true)
+            )
+      );
+    }
+
+    function isReportOwner(reportId) {
+      return isAuthenticated()
+        && firestore.exists(/databases/(default)/documents/civic_reports/$(reportId))
+        && firestore.get(/databases/(default)/documents/civic_reports/$(reportId)).data.userId == request.auth.uid;
+    }
+
+    // 1. User-scoped citizen complaint photo evidence
+    // Pattern: reports/{userId}/{reportId}/evidence_{timestamp}.jpg
+    match /reports/{userId}/{reportId}/{fileName} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow create, update: if isAuthenticated()
+                            && request.auth.uid == userId
+                            && request.resource != null
+                            && request.resource.size < 5 * 1024 * 1024
+                            && request.resource.contentType.matches('image/.*');
+      allow delete: if false;
+    }
+
+    // 2. Legacy citizen complaint photo evidence (un-scoped path)
+    // Strictly restricted to the citizen who owns civic_reports/{reportId} or active admins.
+    match /reports/{reportId}/{fileName} {
+      allow read: if isReportOwner(reportId) || isAdmin();
+      allow write: if false;
+    }
+
+    // 3. Post-resolution officer evidence
+    // Pattern: resolutions/{reportId}/{fileName}
+    // Readable only by the owning citizen or active admins; writable only by active admins.
+    match /resolutions/{reportId}/{fileName} {
+      allow read: if isReportOwner(reportId) || isAdmin();
+      allow create, update: if isAdmin()
+                            && request.resource != null
+                            && request.resource.size < 5 * 1024 * 1024
+                            && request.resource.contentType.matches('image/.*');
+      allow delete: if isAdmin();
+    }
+
+    // Default deny for all other storage paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
