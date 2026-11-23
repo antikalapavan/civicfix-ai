@@ -557,6 +557,7 @@ app.post('/api/image/inspect', requireAuth, async (req, res) => {
  * preserving manual citizen address entry.
  */
 app.get('/api/maps/reverse-geocode', requireAuth, async (req, res) => {
+  console.log('[ReverseGeocode] Backend route reached', { lat: req.query.lat, lng: req.query.lng });
   const latStr = req.query.lat as string;
   const lngStr = req.query.lng as string;
 
