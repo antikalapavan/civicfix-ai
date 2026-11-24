@@ -74,7 +74,7 @@ app.use(
 
 const HOSTED_ORIGIN_PATTERN =
   /^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:run\.app|web\.app|firebaseapp\.com|aistudio\.google\.com|googleusercontent\.com)$/i;
-const NATIVE_APP_ORIGINS = new Set(['capacitor://localhost', 'http://localhost']);
+const NATIVE_APP_ORIGINS = new Set(['capacitor://localhost', 'http://localhost', 'https://localhost']);
 
 /**
  * Normalizes a configured origin from APP_URL or ALLOWED_ORIGINS:

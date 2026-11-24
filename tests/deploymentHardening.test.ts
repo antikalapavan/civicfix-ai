@@ -121,6 +121,7 @@ async function runTests() {
     assert.equal(isOriginAllowed('https://civifix-ai-214ec.firebaseapp.com', empty), true);
     assert.equal(isOriginAllowed('https://preview.aistudio.google.com', empty), true);
     assert.equal(isOriginAllowed('https://app-123.googleusercontent.com', empty), true);
+    assert.equal(isOriginAllowed('https://localhost', empty), true);
     assert.equal(isOriginAllowed('http://localhost:3000', empty), true);
     assert.equal(isOriginAllowed('http://127.0.0.1:5173', empty), true);
     assert.equal(isOriginAllowed(undefined, empty), true);
